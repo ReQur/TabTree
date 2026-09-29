@@ -19,6 +19,8 @@ An Opera extension that shows your tabs as a tree in the sidebar, the way an IDE
 - **Duplicates** of an already open URL are marked and can be closed in one click.
 - **Survives restarts:** the tree is saved as it changes and matched back to the restored tabs by URL.
 
+The full list is in [docs/FEATURES.md](docs/FEATURES.md).
+
 ## Install
 
 1. Open `opera://extensions`, turn on developer mode, click **Load unpacked** and pick the `probe/` folder.
@@ -27,3 +29,16 @@ An Opera extension that shows your tabs as a tree in the sidebar, the way an IDE
    automatic Tab Islands so they don't compete with the extension's folders.
 
 The **Log** view and **Copy report** button show what the extension sees and does, for troubleshooting.
+
+## Development
+
+No build step: `probe/` is loaded as it is. The tests run in Node against fakes of Opera's APIs:
+
+```
+npm install
+npm test
+```
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how it works, stored data, the Opera facts it relies on.
+- [docs/UI.md](docs/UI.md): the panel's UI, its states, and what a redesign has to keep.
+- [CLAUDE.md](CLAUDE.md): notes for AI coding sessions.

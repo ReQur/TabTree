@@ -1,0 +1,91 @@
+// A small fake of the Opera APIs that probe/background.js uses: tabs with islands (tab groups), storage,
+// and the events the background listens to. Empty islands vanish, as they do in Opera.
+//
+// makeOpera() puts the fake on globalThis.chrome; import the background afterwards. A second session in the
+// same process needs a fresh module instance: import('../probe/background.js?session=2').
+
+export function makeOpera({ tabs: initial = [], groups: initialGroups = [], local = {}, session = {} } = {}) {
+  const listeners = {};
+  const storageListeners = [];
+  const on = name => ({ addListener: fn => { listeners[name] = fn; } });
+  const defaults = { windowId: 1, pinned: false, groupId: -1, workspaceId: 'w', status: 'complete', title: '' };
+  const tabs = new Map(initial.map(t => [t.id, { ...defaults, index: t.id, ...t }]));
+  const groups = new Map(initialGroups.map(g => [g.id, { windowId: 1, ...g }]));
+  let nextGroup = 500;
+  const snap = id => ({ ...tabs.get(id) });
+  const dropIfEmpty = gid => {
+    if (gid !== -1 && ![...tabs.values()].some(t => t.groupId === gid)) groups.delete(gid);
+  };
+  const setGroup = (id, gid) => {
+    const old = tabs.get(id).groupId;
+    tabs.get(id).groupId = gid;
+    dropIfEmpty(old);
+    listeners.updated?.(id, { groupId: gid }, snap(id));
+  };
+  const close = id => {
+    const gid = tabs.get(id).groupId;
+    tabs.delete(id);
+    dropIfEmpty(gid);
+    listeners.removed?.(id, { windowId: 1, isWindowClosing: false });
+  };
+
+  const chrome = {
+    storage: {
+      local: {
+        get: async k => Object.fromEntries((Array.isArray(k) ? k : [k]).filter(x => x in local).map(x => [x, structuredClone(local[x])])),
+        set: async o => {
+          Object.assign(local, structuredClone(o));
+          const changes = Object.fromEntries(Object.keys(o).map(k => [k, { newValue: o[k] }]));
+          for (const fn of storageListeners) fn(changes, 'local');
+        },
+        remove: async keys => [].concat(keys).forEach(k => delete local[k]),
+      },
+      session: {
+        get: async k => (k in session ? { [k]: structuredClone(session[k]) } : {}),
+        set: async o => Object.assign(session, structuredClone(o)),
+      },
+      onChanged: { addListener: fn => storageListeners.push(fn) },
+    },
+    tabs: {
+      get: async id => {
+        if (!tabs.has(id)) throw new Error(`No tab with id: ${id}`);
+        return snap(id);
+      },
+      query: async (q = {}) => [...tabs.keys()].map(snap).filter(t => q.groupId == null || t.groupId === q.groupId),
+      group: async ({ groupId, tabIds }) => {
+        const gid = groupId ?? nextGroup++;
+        if (!groups.has(gid)) groups.set(gid, { id: gid, title: '', color: 'grey', windowId: 1 });
+        tabIds.forEach(id => setGroup(id, gid));
+        return gid;
+      },
+      ungroup: async tabIds => tabIds.forEach(id => setGroup(id, -1)),
+      remove: async ids => [].concat(ids).forEach(close),
+      onCreated: on('created'),
+      onRemoved: on('removed'),
+      onReplaced: on('replaced'),
+      onUpdated: on('updated'),
+      onMoved: on('moved'),
+      onAttached: on('attached'),
+      onDetached: on('detached'),
+    },
+    tabGroups: {
+      query: async () => [...groups.values()].map(g => ({ ...g })),
+      update: async (gid, p) => {
+        if (!groups.has(gid)) throw new Error(`No group with id: ${gid}`);
+        Object.assign(groups.get(gid), p);
+      },
+    },
+    webNavigation: { onCreatedNavigationTarget: on('navTarget') },
+    runtime: { onInstalled: on('installed'), onStartup: on('startup'), onMessage: on('message') },
+  };
+  globalThis.chrome = chrome;
+
+  // A tab opened by the user (or by a link on another tab: pass openerTabId).
+  const open = (id, title, url, extra = {}) => {
+    tabs.set(id, { ...defaults, id, index: id, title, url, ...extra });
+    listeners.created(snap(id));
+  };
+  // What the panel would send, answered the way chrome.runtime.sendMessage answers.
+  const ask = msg => new Promise(r => listeners.message(msg, {}, r));
+  return { chrome, listeners, tabs, groups, local, session, open, close, ask, setGroup };
+}

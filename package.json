@@ -1,0 +1,12 @@
+{
+  "name": "tabtree",
+  "private": true,
+  "description": "Opera extension: tabs as a tree in the sidebar. The extension itself is in probe/ and needs no build.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.3"
+  }
+}
