@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "TabTrees Probe",
+  "version": "0.1.0",
+  "description": "Probes what Opera allows for TabTrees: sidebar panel, tab openers, Tab Islands",
+  "permissions": ["tabs", "webNavigation", "storage", "tabGroups", "clipboardWrite"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "sidebar_action": {
+    "default_panel": "panel.html",
+    "default_title": "TabTrees Probe",
+    "default_icon": { "16": "icons/16.png", "32": "icons/32.png" }
+  },
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  }
+}

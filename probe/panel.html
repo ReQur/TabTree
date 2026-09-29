@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>TabTrees Probe</title>
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <header>
+    <input id="q" type="search" placeholder="Search: words, ticket number, mr, jira…  ( / )" autocomplete="off" spellcheck="false">
+    <nav id="views">
+      <button data-view="tree">Tree</button>
+      <button data-view="log">Log</button>
+      <button id="new-folder" class="act" title="New folder on the top level">+ Folder</button>
+    </nav>
+  </header>
+  <div id="pinned" hidden></div>
+  <main id="list"></main>
+  <div id="selbar" hidden>
+    <span id="sel-count"></span>
+    <button id="sel-folder" title="Put the selection into a new folder">→ Folder</button>
+    <button id="sel-close" title="Close the selected tabs and folders (Delete)">Close</button>
+    <button id="sel-clear" title="Clear the selection (Esc)">✕</button>
+  </div>
+  <footer>
+    <span id="stats"></span>
+    <label class="toggle" title="Give a ticket family on the top level its own folder once it has a second tab">
+      <input id="auto-folders" type="checkbox"> Auto-folders
+    </label>
+    <label class="toggle" title="Show every top-level folder with two or more tabs as an Opera island">
+      <input id="mirror" type="checkbox"> Islands
+    </label>
+    <button id="report">Copy report</button>
+  </footer>
+  <script type="module" src="panel.js"></script>
+</body>
+</html>
