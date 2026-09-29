@@ -13,16 +13,18 @@ Everything the extension does today, from the user's side. How it works inside i
    and the page.
 4. Turn off Opera's automatic Tab Islands: the extension manages islands itself and undoes other changes.
 
+Until it is dismissed, the **setup guide** above the tree lists steps 2–4; see Setup guide below.
+
 ## The panel at a glance
 
 Top to bottom:
 
 - **Search field** (`/` focuses it).
-- **Tree | Log** switch and **+ Folder**.
+- **Tree | Log | Settings** switch and **+ Folder**.
 - **Pinned tabs**: a row of favicon buttons.
-- **The list**: the tree of folders and tabs.
+- **The list**: the tree of folders and tabs, with the setup guide above it until it is dismissed.
 - **Selection bar**, only while rows are selected: `N selected: …`, **→ Folder**, **Close**, **✕**.
-- **Footer**: counters (`32 tabs · 5 folders · 12 tickets`), **Auto-folders** and **Islands** switches, **Copy report**.
+- **Footer**: counters (`32 tabs · 5 folders · 12 tickets`) and **Copy report**.
 
 The panel shows the current window and the Opera workspace in use.
 
@@ -75,19 +77,20 @@ count, so a board URL with `?selectedIssue=PROJ-1` is not that ticket's page. Lo
 - **Counts:** a collapsed tab row shows `+N` (tabs under it); a folder row shows how many tabs it holds in total.
 - **Twisty** `▾` / `▸` on rows that have children. Clicking a tab row's twisty folds it; clicking a folder row folds
   it.
+- **On hover**, a tab row shows **✕** (close the tab) and **⋯** (its menu, see Menus); a top-level ticket also shows
+  **→ folder**. A folder row shows **+** and **⋯**.
 
 ## Folders
 
 - **+ Folder** in the header adds a folder on the top level, after the other top-level folders, and opens its name
   for editing.
-- On a folder row, when hovered:
-  - **+** adds a folder inside it (and unfolds it);
-  - **✎** renames it;
-  - **✕** deletes it. What was inside moves one level up; no tab is closed.
-- **Renaming** applies as you type and is kept when the field loses focus. Enter finishes, Esc puts the old name
-  back, and an empty name becomes `Untitled`.
+- On a folder row, when hovered: **+** adds a folder inside it (and unfolds it); **⋯** opens the folder's menu, as
+  does a right click (see Menus).
+- **Renaming** (**Rename** in the menu) applies as you type and is kept when the field loses focus. Enter finishes,
+  Esc puts the old name back, and an empty name becomes `Untitled`.
+- **Deleting** (**Delete folder** in the menu): what was inside moves one level up; no tab is closed.
 - **The colored square** switches to the next of nine colors: grey, blue, red, yellow, green, pink, purple, cyan,
-  orange. They are the colors Opera islands can have.
+  orange. They are the colors Opera islands can have. The menu shows all nine to pick from.
 - Folders nest to any depth, and a folder can't go under a tab. Unless the order was set by hand, folders come
   before tabs on a level.
 - **→ folder** on a top-level ticket (on hover) makes a folder named after the ticket (`PROJ-123 Summary…`), in the
@@ -101,10 +104,11 @@ everything under it. The folder is named after the ticket, colored by its key, a
 - A ticket hanging from a hub on the top level qualifies too. Its folder goes right after the hub, and the family
   leaves the hub.
 - If you **delete** such a folder, or **drag the family out** of it to the top level, the extension remembers that
-  ticket and never makes a folder for it again.
+  ticket and never makes a folder for it again. **Settings › Never for** lists these tickets; **✕** on one allows it
+  again, and its family gets a folder right away if it qualifies.
 - An automatic folder that becomes **empty** disappears. A **renamed** one counts as yours and stays even when
   empty.
-- The **Auto-folders** switch in the footer turns this off.
+- The **Auto-folders** switch in Settings turns this off.
 
 ## Islands (Opera's tab groups) mirror the folders
 
@@ -115,7 +119,8 @@ everything under it. The folder is named after the ticket, colored by its key, a
 - **Every other tab is kept out of islands.** The mirror works one way: an island changed in Opera itself (tabs
   dragged in or out, a rename) is put back to match the folders.
 - Islands never span windows or workspaces. A folder with tabs in two of them gets one island in each.
-- The **Islands** switch turns the mirror off and releases the islands the extension made.
+- The **Islands** switch in Settings turns the mirror off and releases the islands the extension made. Settings also
+  lists every top-level folder with its island state.
 
 ## Drag and drop
 
@@ -152,21 +157,67 @@ Any tab row or folder row can be dragged. Where it lands depends on where it is 
 - **Delete** does the same as Close.
 - **How the selection counts:** a selected page of a ticket stands for its whole ticket, and a row inside a
   selected folder or branch counts only once.
+- **Right click** (or **⋯**) on a selected row opens the selection's menu, see Menus.
+
+## Menus
+
+**⋯** on a row (shown on hover) and a **right click** on the row open the same menu. It closes on Esc, a click
+elsewhere, scrolling, or once an item is used. ↑ ↓ move between its items and Enter uses one.
+
+**A tab:**
+- **Close tab**, the same as a middle click. **Close N tabs** when tabs hang under it: the tab and everything under
+  it.
+- **Put into a new folder**: a new folder in the branch's place, on the nearest level that can hold folders, with the
+  tab and everything under it inside. For a ticket (or one of its pages) the whole ticket goes in, and the folder is
+  named and colored after it, as with **→ folder**. For any other tab the folder opens for renaming.
+- **Move to the top level** (when the tab isn't there): last on the top level. A ticket's page moves its ticket.
+- **Copy link**. **Copy links as Markdown** when tabs hang under it: the branch as a nested list,
+  `- [PROJ-2 Epic](https://…)`, one level of indent per tree level, folders in bold.
+- **Reload** / **Reload N tabs**, and **Unload from memory** / **Unload N tabs**: Opera frees the tab's memory and
+  loads it again when it is opened. The tab in view is never unloaded.
+
+**A folder:**
+- **New folder inside** and **Rename**;
+- the nine colors, the folder's own one checked;
+- **Close N duplicates** when the folder holds extra copies of a URL;
+- **Copy links as Markdown** when it holds tabs;
+- **Delete folder**: its tabs move one level up.
+
+**The selection** (on a selected row, with more than one row selected):
+- **Put N items into a new folder** (as **→ Folder** on the selection bar), **Move to the top level**,
+  **Copy links as Markdown**, **Reload N tabs**, **Unload N tabs**;
+- **Close …**, at once: choosing it in a menu is already deliberate, so there is no second click as on the selection
+  bar.
+
+A right click on a row outside the selection clears the selection and opens that row's menu.
+
+**The empty part of the list:** **New folder** on the top level.
+
+**A search result** of the current workspace: the tab's menu.
 
 ## Search
 
-- Typing filters all tabs of the window, other workspaces included. It matches title, URL, ticket key and page kind
-  (`mr`, `pipeline`, `jira`).
+- Typing filters all tabs of the window, pinned tabs and other workspaces included. It matches title, URL, ticket
+  key and page kind (`mr`, `pipeline`, `jira`).
 - Every word must match; case doesn't matter. Try `2931 mr` or `dashboard latency`.
-- Results are a flat list. A tab from another workspace carries that workspace's name.
-- **↑ / ↓** move the highlight, **Enter** opens the highlighted tab, **Esc** clears the search.
+- Above the results: how many there are, and the keys (`4 tabs · ↑ ↓ move · Enter opens · Esc clears`).
+- A result is the tab's row (favicon, key, cleaned title, badges) with the words found in the title marked. Under it
+  is where the tab is:
+  - its path in the tree, top down: folders, tickets' keys and other pages' titles
+    (`Release 2.4 › PROJ-101 › PROJ-140`), with the top-level folder's color;
+  - or `Top level`, `Pinned`, or `Workspace Personal · opens there` for a tab of another workspace, which also
+    carries the workspace's name as a badge.
+- **↑ / ↓** move the highlight, **Enter** opens the highlighted tab, **Esc** clears the search. A click opens a
+  result, a middle click closes it, and a right click opens its menu (tabs of the current workspace).
+- With nothing found, a line says what is searched.
 
 ## Closing tabs and duplicates
 
-- **Middle click** on a row closes that tab.
-- **✕ N dups** on a folder row closes the extra copies in that folder. Of each URL, the copy kept is the active one,
-  else the most recently used.
-- Close on the selection bar: see Selection.
+- **Middle click** on a row, or **✕** at its right end (on hover), closes that tab.
+- **Close N tabs** in a tab's menu closes the tab with everything under it.
+- **✕ N dups** on a folder row, or **Close N duplicates** in its menu, closes the extra copies in that folder. Of
+  each URL, the copy kept is the active one, else the most recently used.
+- Close on the selection bar or in the selection's menu: see Selection and Menus.
 
 ## Pinned tabs and other workspaces
 
@@ -191,7 +242,8 @@ survive.
 
 ## Log view and report
 
-**Log** shows the report live; **Copy report** copies it. The report contains:
+**Log** shows the report live; **Copy report** in the footer, or **Copy** in Settings › Diagnostics, copies it.
+The report contains:
 - the Opera and Chromium versions;
 - the APIs available;
 - tab, workspace and folder counts;
@@ -203,9 +255,31 @@ It is meant for debugging: paste it into a session.
 
 ## Settings
 
-Both settings live in the footer and are on by default:
-- **Auto-folders**: automatic folders for ticket families.
-- **Islands**: the island mirror.
+**Settings** in the header switches the list to the settings; **Tree** or Esc goes back. The switches are on by
+default.
+
+- **Tree**
+  - **Auto-folders**: automatic folders for ticket families.
+  - **Never for**: the tickets that never get an automatic folder (their folder was deleted, or the family was taken
+    out of it). **✕** on a ticket allows it again; if its family qualifies, the folder is made right away.
+- **Opera**
+  - **Islands**: the island mirror.
+  - Every top-level folder with its state: `9 tabs · island`, `1 tab · no island, Opera needs 2`,
+    `0 tabs · no island`, or `islands are off`.
+- **Diagnostics**: **Report › Copy** copies the report; **Log › Open** opens the Log view.
+- **Setup**: **Setup guide › Show** brings the setup guide back above the tree.
+
+## Setup guide
+
+Until it is dismissed, a card above the tree lists what to set up in Opera, once:
+1. **Pin this panel**: the pin in the panel's title bar keeps it next to the page.
+2. **Collapse Opera's tabs**: Settings › Browser › Tabs: vertical tabs, collapsed to a column of icons.
+3. **Turn off automatic Tab Islands**: TabTree makes islands from your folders.
+
+- A click on a step ticks it (✓) or unticks it. Opera doesn't tell extensions any of this, so the steps are ticked
+  by hand.
+- **Got it** hides the guide for good; **Settings › Setup guide › Show** brings it back.
+- **Later** hides it until the panel is opened again.
 
 ## Keyboard and mouse
 
@@ -215,25 +289,34 @@ Both settings live in the footer and are on by default:
 | click | folder row | fold / unfold (clears the selection, sets the anchor) |
 | click | twisty of a tab row | fold / unfold its branch |
 | middle click | tab row | close the tab |
+| right click | row | its menu; on a selected row, the selection's menu (see Menus) |
+| right click | empty part of the list | New folder |
 | Ctrl+click | row | add / remove from the selection |
 | Shift+click, Ctrl+Shift+click | row | select / add a range from the anchor |
 | click | empty part of the list | clear the selection and the anchor |
 | drag | row | move (see Drag and drop) |
 | click | folder's colored square | next color |
-| hover | folder row | **+**, **✎**, **✕** |
+| hover | tab row | **✕** close, **⋯** menu |
+| hover | folder row | **+** folder inside, **⋯** menu |
 | hover | top-level ticket | **→ folder** |
+| click | step of the setup guide | tick / untick it |
 | `/` | anywhere | focus search |
 | ↑ ↓ Enter | search | move the highlight, open |
-| Esc | anywhere | clear the search and the selection; also closes the report's copy-by-hand box |
+| ↑ ↓ Enter | menu | move between the items, use one |
+| Esc | anywhere | close the menu, if one is open. Otherwise clear the search and the selection, and go back to the tree from Log or Settings; also closes the report's copy-by-hand box |
 | Delete | with a selection | Close the selection (asks first when it is big) |
 
 ## Limitations and known gaps
 
 - **Opera's own tab strip** can only be collapsed, not removed, and the extension can't open its panel by itself.
+- **Full-screen video**: a pinned panel stays on screen next to a video in full screen. This is how Opera treats
+  every pinned sidebar panel, and extensions have no API to hide or close their panel. Workaround: close the panel
+  (its icon in Opera's sidebar), or unpin it, before going full screen.
 - **One panel per window**, showing that window only.
 - **The tab strip order** isn't changed to follow the tree. Islands only make their tabs sit together.
 - **Keyboard navigation** of the tree (arrows, Enter on rows) doesn't exist yet.
-- **The refusal list for automatic folders** can't be seen or edited in the UI.
+- **The setup guide can't check its steps**: Opera tells extensions neither whether the panel is pinned nor how its
+  tabs and islands are set up, so the steps are ticked by hand.
 - **Title and favicon changes of background tabs** are only logged. The planned "changed while you weren't looking"
   marker is not built.
-- **Hover-only buttons** are easy to miss.
+- **Hover-only buttons** are easy to miss; a right click gives the same menu as **⋯**.

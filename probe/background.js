@@ -248,7 +248,16 @@ async function closeItems({ tabIds = [], folderIds = [] }) {
   record('log', { ev: 'closed', tabs: tabIds.length, folders: folderIds.length });
 }
 
-const commands = { place, newFolder, renameFolder, colorFolder, deleteFolder, closeItems };
+// Settings → "Never for": the ticket may get an automatic folder again, right away if its family qualifies.
+async function allowAutoFolder({ key }) {
+  await update('declined', (d = {}) => {
+    const { [key]: _, ...rest } = d;
+    return rest;
+  });
+  scheduleMirror();
+}
+
+const commands = { place, newFolder, renameFolder, colorFolder, deleteFolder, closeItems, allowAutoFolder };
 let running = Promise.resolve();
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {

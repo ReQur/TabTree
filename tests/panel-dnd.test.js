@@ -76,7 +76,8 @@ check('the color square switches to the next color', p.last().type === 'colorFol
 [...p.row('Lone ticket').querySelectorAll('button')].find(b => b.textContent === '→ folder').click();
 await wait(50);
 check('"→ folder" puts a top-level ticket into a folder in its place', p.last().type === 'newFolder' && p.last().items.join() === 't:7' && p.last().order.includes(`f:${p.last().id}`) && !p.last().order.includes('t:7'));
-[...p.row('Dashboards').querySelectorAll('button')].find(b => b.textContent === '✕').click();
+p.more('Dashboards');
+p.pick('Delete folder');
 await wait(50);
-check('✕ deletes the folder', p.last().type === 'deleteFolder' && p.last().id === 'dash');
+check('"Delete folder" in the folder menu deletes it', p.last().type === 'deleteFolder' && p.last().id === 'dash');
 done();

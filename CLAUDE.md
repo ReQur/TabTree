@@ -56,7 +56,8 @@ docs/                  see above
     folder counts, the snapshot state and the recent events.
 - Invariants (the reasons are in ARCHITECTURE.md):
   - Every change to the tree is a background command: `place`, `newFolder`, `renameFolder`, `colorFolder`,
-    `deleteFolder`, `closeItems`. The panel redraws from storage.
+    `deleteFolder`, `closeItems`, `allowAutoFolder`. The panel redraws from storage. It writes only `settings`
+    itself.
   - Tab ids change with every browser session. Anything keyed by a tab id must go through the snapshot to survive a
     restart.
   - Islands are output only. Each top-level folder with 2+ tabs is an island; every other tab is kept out of

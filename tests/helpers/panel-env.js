@@ -1,6 +1,7 @@
-// Loads probe/panel.js into jsdom with a fake chrome API: the given tabs and stored tree, and a recorder for
-// the messages the panel sends to the background. Rows are 20px tall for drag and drop: y < 6 is the upper
-// edge ("before"), y > 14 the lower edge ("after"), anything between is "inside".
+// Loads probe/panel.js into jsdom with a fake chrome API: the given tabs and stored tree, and recorders for
+// what the panel does: messages to the background, tabs opened, closed, reloaded or unloaded, text copied,
+// settings written. Rows are 20px tall for drag and drop: y < 6 is the upper edge ("before"), y > 14 the
+// lower edge ("after"), anything between is "inside".
 import { JSDOM } from 'jsdom';
 import fs from 'node:fs';
 import { wait } from './check.js';
@@ -13,7 +14,15 @@ export async function loadPanel({ tabs, store, onMessage = () => {} }) {
   const w = dom.window;
   const sent = [];
   const activated = [];
+  const removed = [];
+  const reloaded = [];
+  const discarded = [];
+  const copied = [];
+  const sets = [];
   const storageListeners = [];
+  const notify = changed => {
+    for (const l of storageListeners) l({ [changed]: {} }, 'local');
+  };
   const ev = () => ({ addListener() {} });
   const tabEvents = ['onCreated', 'onRemoved', 'onUpdated', 'onMoved', 'onActivated', 'onAttached', 'onDetached', 'onReplaced'];
 
@@ -21,7 +30,9 @@ export async function loadPanel({ tabs, store, onMessage = () => {} }) {
     tabs: {
       query: async () => tabs.map(t => ({ ...t })),
       update: async id => activated.push(id),
-      remove: async () => {},
+      remove: async ids => removed.push(...[].concat(ids)),
+      reload: async id => reloaded.push(id),
+      discard: async id => discarded.push(id),
       ...Object.fromEntries(tabEvents.map(n => [n, ev()])),
     },
     tabGroups: { query: async () => [] },
@@ -30,14 +41,18 @@ export async function loadPanel({ tabs, store, onMessage = () => {} }) {
       sendMessage: async m => {
         sent.push(m);
         const changed = onMessage(m, store);
-        if (changed) for (const l of storageListeners) l({ [changed]: {} }, 'local');
+        if (changed) notify(changed);
         return { ok: true };
       },
     },
     storage: {
       local: {
         get: async k => Object.fromEntries([].concat(k).filter(x => x in store).map(x => [x, structuredClone(store[x])])),
-        set: async () => {},
+        set: async items => {
+          sets.push(structuredClone(items));
+          Object.assign(store, structuredClone(items));
+          for (const k of Object.keys(items)) notify(k);
+        },
       },
       session: { get: async () => ({}) },
       onChanged: { addListener: fn => storageListeners.push(fn) },
@@ -45,6 +60,7 @@ export async function loadPanel({ tabs, store, onMessage = () => {} }) {
   };
   w.HTMLElement.prototype.scrollIntoView = () => {};
   w.HTMLElement.prototype.getBoundingClientRect = () => ({ top: 0, height: 20 });
+  Object.defineProperty(w.navigator, 'clipboard', { value: { writeText: async t => copied.push(t) }, configurable: true });
   Object.assign(globalThis, { window: w, document: w.document, localStorage: w.localStorage });
   Object.defineProperty(globalThis, 'navigator', { value: w.navigator, configurable: true });
 
@@ -71,6 +87,32 @@ export async function loadPanel({ tabs, store, onMessage = () => {} }) {
     fire(row(from) ?? w.document.body, 'dragend');
     return over.defaultPrevented;
   };
-  const key = k => w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: k }));
-  return { w, $, rows, row, click, selected, fire, drag, key, sent, activated, last: () => sent.at(-1) };
+  const key = k => w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: k, bubbles: true }));
+
+  // Menus: the labels of the open menu (null when none is open), opening one, and using an item.
+  const menuEl = () => $('.menu');
+  const menu = () => (menuEl().hidden ? null : [...menuEl().querySelectorAll('.mi .label')].map(l => l.textContent));
+  const hint = label => [...menuEl().querySelectorAll('.mi')].find(b => b.querySelector('.label').textContent === label)?.querySelector('.hint')?.textContent;
+  const rightClick = target => {
+    const e = new w.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 50, clientY: 50 });
+    (typeof target === 'string' ? row(target) : target).dispatchEvent(e);
+    return e;
+  };
+  const more = text => [...row(text).querySelectorAll('button')].find(b => b.textContent === '⋯').click();
+  const pick = label => {
+    const item = [...menuEl().querySelectorAll('.mi')].find(b => b.querySelector('.label').textContent === label);
+    if (!item) throw new Error(`no menu item «${label}» in ${JSON.stringify(menu())}`);
+    item.click();
+  };
+  const hoverButton = (text, label) => [...row(text).querySelectorAll('button')].find(b => b.textContent === label);
+  const mousedown = target => target.dispatchEvent(new w.MouseEvent('mousedown', { bubbles: true }));
+  const search = q => {
+    $('#q').value = q;
+    $('#q').dispatchEvent(new w.Event('input', { bubbles: true }));
+  };
+
+  return {
+    w, $, rows, row, click, selected, fire, drag, key, sent, activated, removed, reloaded, discarded, copied, sets, store,
+    menu, hint, rightClick, more, pick, hoverButton, mousedown, search, last: () => sent.at(-1),
+  };
 }

@@ -1,7 +1,8 @@
 # TabTree: the panel's UI
 
 The UI as it is now, what it has to support, and what could be better. Written as a brief for redesigning it, and
-as a map for implementing a new design. What each control does is in [FEATURES.md](FEATURES.md); where the code is,
+as a map for implementing a new design. The menus, Settings, the setup guide and the search results' second line
+already work, taken from the design canvas, but carry only minimal styling until the design is implemented. What each control does is in [FEATURES.md](FEATURES.md); where the code is,
 in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Where the panel lives
@@ -23,11 +24,17 @@ in [ARCHITECTURE.md](ARCHITECTURE.md).
 ```
 ┌──────────────────────────────────────────────────┐
 │ [ Search: words, ticket number, mr, jira…  ( / ) ] │  header
-│ [    Tree    ][    Log    ]            [ + Folder ]│
+│ [  Tree  ][  Log  ][ Settings ]        [ + Folder ]│
 ├──────────────────────────────────────────────────┤
 │ (chat) (mail) (music)                             │  pinned tabs: favicon buttons
 ├──────────────────────────────────────────────────┤
-│ ▾ ■ Release 2.4                       + ✎ ✕    7  │  folder: color square, hover buttons, tab count
+│ ┌ Set up TabTree ─────────────────────────────┐   │  setup guide, until dismissed
+│ │ ✓ Pin this panel                            │   │
+│ │ 2 Collapse Opera's tabs                     │   │
+│ │ 3 Turn off automatic Tab Islands            │   │
+│ │ [Got it] [Later]                            │   │
+│ └─────────────────────────────────────────────┘   │
+│ ▾ ■ Release 2.4                         + ⋯    7  │  folder: color square, hover buttons, tab count
 │   ▾ ■ Dashboards                               2  │  nested folder
 │        (G) Checkout latency                       │
 │        (G) Error budget                           │
@@ -36,7 +43,7 @@ in [ARCHITECTURE.md](ARCHITECTURE.md).
 │          (F) MR !812                              │  a ticket page that only repeats the title
 │          (F) Backoff tuning  [MR !820] [draft] [dup] │
 │ ▾ (F) Merge requests                              │  hub page, not a ticket
-│     (F) PROJ-160  Rate limiter  [MR !830] [→ folder] │  hover button
+│     (F) PROJ-160  Rate limiter  [MR !830] [→ folder] ✕ ⋯ │  hover buttons
 │   (M) Inbox – Mail                                │
 │ ▸ Workspace: Personal                          2  │  other workspaces, folded
 │                                                   │
@@ -46,7 +53,7 @@ in [ARCHITECTURE.md](ARCHITECTURE.md).
 ├──────────────────────────────────────────────────┤
 │ 3 selected: 5 tabs, 1 folder  [→ Folder][Close][✕] │  selection bar, only while selecting
 ├──────────────────────────────────────────────────┤
-│ 32 tabs · 5 folders · 12 tickets ☑Auto-folders ☑Islands [Copy report] │  footer
+│ 32 tabs · 5 folders · 12 tickets        [Copy report] │  footer
 └──────────────────────────────────────────────────┘
 ```
 
@@ -56,7 +63,7 @@ in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 **Header**
 - Search field. Placeholder `Search: words, ticket number, mr, jira…  ( / )`; accent border on focus.
-- View switch **Tree | Log**: two equal buttons; the current one is filled.
+- View switch **Tree | Log | Settings**: three equal buttons; the current one is filled.
 - **+ Folder**: a text button.
 
 **Pinned row**
@@ -74,7 +81,8 @@ in [ARCHITECTURE.md](ARCHITECTURE.md).
   - `dup`, in warning color;
   - `♪`.
 - **`+N`** when the row is folded (tabs under it).
-- **`→ folder`**, a hover-only button, on top-level ticket roots.
+- Hover-only buttons: **`→ folder`** on top-level ticket roots, then **✕** (title "Close tab (middle click)") and
+  **⋯** (title "More actions (right click)") on every tab row of the tree.
 
 States:
 - **hover**: tinted background;
@@ -87,7 +95,7 @@ States:
 - **search highlight**: 1px accent outline;
 - **tooltip**: full title and URL.
 
-Middle click closes the tab.
+Middle click closes the tab; right click opens the tab's menu.
 
 **Ticket page row** (a tab under its ticket): the same as a tab row. When its title only repeats the ticket's, the
 title reads as the page kind (`MR !812`). Otherwise it shows its own title plus a kind badge.
@@ -97,7 +105,8 @@ title reads as the page kind (`MR !812`). Otherwise it shows its own title plus 
 - **Twisty** (empty for an empty folder).
 - **Color square** 10×10, rounded 3px, one of 9 colors. Clicking it switches to the next color.
 - **Name**, then `✕ N dups` when the folder holds duplicates.
-- Hover-only buttons **+** (new folder inside), **✎** (rename), **✕** (delete, keeping the tabs).
+- Hover-only buttons **+** (new folder inside) and **⋯** (the folder's menu, with Rename and Delete). There is no ✕
+  on a folder row, so ✕ on a row always means "close this tab".
 - **Count** of all tabs inside.
 
 States: hover, selected, folded, dragging, drop markers. **Renaming**: the name turns into a text field (accent
@@ -111,20 +120,44 @@ border) in place.
 - A dashed box with the text "Drop here: last on the top level", shown below the list while dragging. It is
   highlighted when something is over it.
 
+**Menu** (`.menu`, on ⋯ or right click; one at a time, fixed position, flips up near the bottom edge):
+- Items: a label and an optional hint on a second line (`Middle click`, `This tab and everything under it`,
+  `Its tabs move one level up`, `Loads again when opened`). Dangerous items (**Delete folder**, the selection's
+  **Close …**) are in the danger color.
+- Separators between groups.
+- The folder menu has a row of nine color squares; the current color is outlined.
+- Keyboard focus starts on the first item; ↑ ↓ move, Enter uses, Esc closes.
+- The contents of each menu are in FEATURES.md › Menus.
+
+**Setup guide** (`.card` at the top of the tree):
+- Title "Set up TabTree", subtitle, three numbered steps with a bold name and a muted line each. A ticked step shows
+  ✓ in an accent circle instead of its number. Steps are clickable.
+- Buttons **Got it** (primary) and **Later**.
+
+**Settings view** (replaces the list; `.settings`):
+- Section headings **Tree**, **Opera**, **Diagnostics**, **Setup** (small caps, muted).
+- Options: a bold name, a muted description, and a control on the right: a checkbox switch or a small button.
+- **Never for**: chips with the ticket key and ✕; "No ticket is kept out of automatic folders." when empty.
+- Islands: one line per top-level folder: color square, name, `N tabs · island` (or why not).
+
 **Selection bar**, only while something is selected:
 - The count text: `N selected: 5 tabs, 1 folder`.
 - Buttons **→ Folder**, **Close**, **✕**.
 - Close has an armed state: warning background, reading `Sure? Close 5 tabs, 1 folder`, for 4 seconds.
 
 **Footer**
-- Counters (cut with an ellipsis), the **Auto-folders** and **Islands** checkboxes, and **Copy report**.
-- Short messages temporarily replace the counters for 2.5 s: `Report copied`, `place failed: …`.
+- Counters (cut with an ellipsis) and **Copy report**.
+- Short messages temporarily replace the counters for 2.5 s: `Report copied`, `Link copied`, `Links copied`,
+  `place failed: …`.
 
 **Search results**
-- The same tab rows, flat, no indent.
+- A muted line on top: `4 tabs · ↑ ↓ move · Enter opens · Esc clears`.
+- Two-line rows (`.row.hit`), flat, no indent: favicon; key, title with the matched words in `<mark>`, badges; under
+  it, muted and smaller, the path (`.crumbs`): the top-level folder's color square and
+  `Release 2.4 › PROJ-101 › PROJ-140`, or `Top level`, `Pinned`, `Workspace Personal · opens there`.
 - The highlighted result has an outline.
 - A tab from another workspace carries the workspace name as a badge.
-- With nothing found: `No matches`.
+- With nothing found: a line saying what is searched ("No tabs match. Every word has to match…").
 
 **Log view**
 - A monospace (11px) pre-formatted report that fills the list area.
@@ -144,6 +177,8 @@ border) in place.
 | `--accent` | `#2f6feb` | `#6ea8ff` | keys, focus, drop markers, selection bar edge |
 | `--chip` | `#eef1f4` | `#2d3038` | badges, buttons |
 | `--warn` | `#d29922` | (same) | `dup`, armed Close |
+| `--danger` | `#cf222e` | `#ff7b72` | dangerous menu items |
+| `--mark` | `#fff2a8` | `#5a4a12` | matched words in search results |
 
 - **Type:** 12px/1.35 system UI; badges 10px; log 11px monospace. Semibold for folders, groups and keys.
 - **Radii:** 3–4px.
@@ -163,13 +198,13 @@ border) in place.
 | cyan | `#78d9ec` |
 | orange | `#fcad70` |
 
-- **Icons:** there is no icon set, only Unicode glyphs `▾ ▸ + ✎ ✕ → ♪` and letter chips.
+- **Icons:** there is no icon set, only Unicode glyphs `▾ ▸ + ⋯ ✕ → ♪ ✓` and letter chips.
 
 ## What is weak today
 
 - **Icons** are text glyphs with uneven weight and size.
-- **Hover-only actions** (+ ✎ ✕, → folder) are invisible until hovered. There is no context menu and no visible
-  affordance for "you can drag this".
+- **Hover-only actions** (+ ⋯ ✕, → folder) are invisible until hovered, and nothing says "you can drag this". The
+  menus work, but look plain.
 - **Active and selected** are two similar blues. A selected active tab is hard to read.
 - **Islands are invisible in the panel:**
   - nothing shows that a top-level folder is mirrored as an island (it needs 2+ tabs), or which color Opera uses
@@ -187,11 +222,10 @@ border) in place.
 - **Missing views:**
   - the pinned row is bare icons;
   - the workspace group is plain text;
-  - there is no empty state (no tabs, no search results beyond a line of text), no onboarding (pin the panel,
-    collapse Opera's tabs), and no settings view;
+  - there is no empty state (no tabs, no search results beyond a line of text);
+  - the setup guide and Settings have only minimal styling;
   - the Log view is raw text.
-- **Search** gives a flat list, without highlighting the matched text and without showing where each tab sits in
-  the tree.
+- **Search results** have their matches marked and their path, with minimal styling.
 
 ## What any design has to keep
 
@@ -199,6 +233,8 @@ border) in place.
   - click, middle click, Ctrl/Shift/Ctrl+Shift click, click on empty space;
   - drag with before/inside/after zones and a way to drop at the end of the top level;
   - folder create, rename in place, color and delete; `→ folder`;
+  - ✕ and ⋯ on rows, right click, and every menu item in FEATURES.md › Menus;
+  - the setup guide, Settings (switches, Never for, island states), search paths and marks;
   - `/`, arrows, Enter, Esc, Delete;
   - the Log view and Copy report (they can move, but they are how bugs get diagnosed).
 - **Density:** compact rows (about 22–26px) and up to 6 indent levels at 260px width, with no horizontal scrolling.
@@ -218,13 +254,22 @@ border) in place.
   - markup skeleton: `probe/panel.html`;
   - styles: `probe/panel.css`;
   - rows are built in `probe/panel.js`: `tabRow()`, `renderNode()`, `renderFolder()`, `renderGroup()`,
-    `renderSearch()`, `renderPinned()`, `renderSelBar()`, `renderStats()`;
+    `renderSearch()`, `hitRow()`, `renderPinned()`, `renderSelBar()`, `renderStats()`;
+  - menus in `openMenu()`, `menuItem()`, `swatches()`, `moreButton()`, and their contents in `folderMenu()`,
+    `tabMenu()`, `selectionMenu()`; the guide in `guideCard()`, Settings in `renderSettings()`;
   - the whole list is rebuilt on every change (`render()`).
 - **Hooks the tests use** (`tests/helpers/panel-env.js`, `tests/panel-*.test.js`):
   - elements: `#list`, `#list .row`, `.row .title`, `.row.selected`, `.folder .dot`, `#new-folder`, `#selbar`,
-    `#sel-count`, `#sel-folder`, `#sel-close`, `#sel-clear`, `input.rename`, `.drop-zone`;
+    `#sel-count`, `#sel-folder`, `#sel-close`, `#sel-clear`, `input.rename`, `.drop-zone`, `#stats`, `#q`;
+  - the view buttons `#views button[data-view]` and their `.on` state;
   - folder rows' `data-folder`;
-  - button texts `→ folder` and `✕`;
+  - row buttons by text: `→ folder`, `✕`, `⋯`, `+`, `✕ N dups`, and the titles of `✕` and `⋯`;
+  - menus: `.menu` (with `hidden`), `.mi .label`, `.mi .hint`, `.mi.danger`, `.msep`, `.sw[data-color]`, `.sw.on`;
+  - the guide: `.card`, `.card h4`, `.card button` by text (`Got it`, `Later`), `.steps li[data-step]`, `.steps .num`,
+    `.steps li.done`, `.steps li b`;
+  - Settings: `.settings h3`, `.opt b`, `.opt button`, `#set-auto-folders`, `#set-mirror`, `.chip[data-key] button`,
+    `.chips .muted`, `.islands li .title`, `.islands li .count`, `pre.log`;
+  - search: `.row.hit`, `.hit .key`, `.meta`, `.crumbs`, `.crumbs .dot`, `mark`, `.badge`, `#list .note`;
   - rows found by their visible text.
 
   Keep them, or update the tests along with the design.

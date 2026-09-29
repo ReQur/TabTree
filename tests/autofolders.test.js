@@ -36,6 +36,10 @@ await o.ask({ type: 'deleteFolder', id: f1 });
 await wait(1200);
 check('a deleted family folder is not made again', !folderFor('PROJ-1') && o.local.declined?.['PROJ-1'] === true);
 
+await o.ask({ type: 'allowAutoFolder', key: 'PROJ-1' });
+await wait(1200);
+check('allowed again in Settings: the family gets its automatic folder back at once', !o.local.declined?.['PROJ-1'] && folderFor('PROJ-1')?.[1].auto === true);
+
 await o.ask({ type: 'place', nodes: ['t:5'], parent: 'root', order: [] });
 await wait(1200);
 check('a family taken out of its folder: no folder again, the empty automatic folder goes', !folderFor('PROJ-2') && !o.local.folders[f2] && o.local.declined?.['PROJ-2'] === true);

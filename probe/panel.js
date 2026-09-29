@@ -6,8 +6,6 @@ const listEl = $('#list');
 const pinnedEl = $('#pinned');
 const statsEl = $('#stats');
 const qEl = $('#q');
-const mirrorEl = $('#mirror');
-const autoFoldersEl = $('#auto-folders');
 const selBar = $('#selbar');
 
 // Per-viewer UI conveniences only; losing them is harmless.
@@ -34,7 +32,13 @@ const GROUP_COLORS = {
 };
 const COLORS = Object.keys(GROUP_COLORS);
 
-let view = prefs.get('view') === 'log' ? 'log' : 'tree';
+const SETUP_STEPS = [
+  ['pin', 'Pin this panel', "The pin in the panel's title bar keeps it next to the page."],
+  ['tabs', "Collapse Opera's tabs", 'Settings › Browser › Tabs: vertical tabs, collapsed to a column of icons.'],
+  ['islands', 'Turn off automatic Tab Islands', 'TabTree makes islands from your folders.'],
+];
+
+let view = prefs.get('view') === 'log' ? 'log' : 'tree'; // 'tree', 'log' or 'settings'
 const collapsed = new Set(prefs.get('collapsed', []));
 let allTabs = []; // every tab of the window, all Opera workspaces
 let tabs = []; // the workspace in use
@@ -42,14 +46,19 @@ let otherIds = new Set(); // tabs of the other workspaces
 let parents = {}; // tab id -> parent tab id, "f:<folder id>", or -1 for the top level
 let folders = {}; // folder id -> { name, color, parent, created }
 let ranks = {}; // "t:<id>" / "f:<id>" -> order among siblings
-let root = null; // the tree drawn last, for drops on the top level
+let settings = {}; // autoFolders, mirrorIslands, onboarded, setup
+let declined = {}; // tickets that never get an automatic folder
+let root = null; // the tree drawn last
+let treeNodes = new Map(); // tab id -> node of that tree
 let nodeByRef = new Map(); // "t:<id>" / "f:<id>" -> node of that tree
 let visible = []; // refs of the drawn tree rows, top to bottom
 let dupIds = new Set(); // extra copies of an already open URL
 let hits = [];
 let selected = 0;
-let paused = false; // rendering is frozen while dragging, renaming, or showing the copy fallback
-let pendingRename = null; // a folder just created, to rename as soon as it is drawn
+let paused = false; // rendering is frozen while dragging, renaming, a menu is open, or the copy fallback shows
+let missed = false; // something asked for a render while it was frozen
+let pendingRename = null; // a folder to rename as soon as it is drawn
+let guideLater = false; // "Later" on the setup guide hides it until the panel is opened again
 
 async function load() {
   let list = await chrome.tabs.query({ currentWindow: true });
@@ -59,13 +68,12 @@ async function load() {
   tabs = current;
   otherIds = new Set(others.map(t => t.id));
   dupIds = findDuplicates(tabs);
-  const stored = await chrome.storage.local.get(['parents', 'folders', 'ranks', 'settings']);
+  const stored = await chrome.storage.local.get(['parents', 'folders', 'ranks', 'settings', 'declined']);
   parents = stored.parents ?? {};
   folders = stored.folders ?? {};
   ranks = stored.ranks ?? {};
-  mirrorEl.checked = !!chrome.tabGroups && stored.settings?.mirrorIslands !== false;
-  mirrorEl.disabled = !chrome.tabGroups;
-  autoFoldersEl.checked = stored.settings?.autoFolders !== false;
+  settings = stored.settings ?? {};
+  declined = stored.declined ?? {};
 }
 
 // Opera lists the tabs of every workspace in one window and tags each with workspaceId/workspaceName.
@@ -110,6 +118,21 @@ async function send(msg) {
   return res;
 }
 
+// Writes one setting; `value` may be a function of the stored one. Writes are queued, so that quick clicks don't
+// overwrite each other's changes.
+let settingsQueue = Promise.resolve();
+function setSetting(name, value) {
+  const write = async () => {
+    const { settings: current = {} } = await chrome.storage.local.get('settings');
+    const next = typeof value === 'function' ? value(current[name]) : value;
+    await chrome.storage.local.set({ settings: { ...current, [name]: next } });
+  };
+  settingsQueue = settingsQueue.then(write, write);
+  return settingsQueue;
+}
+
+// ---- actions on folders, tabs and branches ----
+
 const newFolderId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 // A new folder goes after the other folders of its level, and gets renamed right away.
@@ -123,12 +146,67 @@ async function addFolder(parentNode) {
   await send({ type: 'newFolder', id, parent: parentNode.folder?.id ?? null, order });
 }
 
-// A ticket family at the top level becomes a folder of its own, in the family's place.
-function familyToFolder(node) {
+// A folder made for a ticket is named after it, colored by its key, and remembers the key, so that deleting
+// the folder keeps automatic folders away from that ticket.
+const ticketFolder = node => ({
+  name: islandName(node.ticket.key, node.ticket.title),
+  color: colorFor(node.ticket.key),
+  key: node.ticket.key,
+});
+
+// A new folder in place of the first of `nodes`, on the nearest level that can hold folders, with `nodes`
+// inside. Without a name it opens for renaming.
+function nodesToFolder(nodes, props = {}) {
+  if (!nodes.length) return;
+  let spot = nodes[0];
+  while (spot.parent.tab) spot = spot.parent;
+  const level = spot.parent;
   const id = newFolderId();
-  const { key, title } = node.ticket;
-  const order = node.parent.children.map(n => (n === node ? folderRef(id) : nodeRef(n)));
-  send({ type: 'newFolder', id, name: islandName(key, title), color: colorFor(key), key, items: [nodeRef(node)], order });
+  const order = level.children.flatMap(n => [...(n === spot ? [folderRef(id)] : []), ...(nodes.includes(n) ? [] : [nodeRef(n)])]);
+  if (!props.name) pendingRename = id;
+  send({ type: 'newFolder', id, parent: level.folder?.id ?? null, items: nodes.map(nodeRef), order, ...props });
+}
+
+const familyToFolder = node => nodesToFolder([node], ticketFolder(node));
+
+function moveToTop(nodes) {
+  const refs = nodes.map(nodeRef);
+  const order = [...root.children.map(nodeRef).filter(r => !refs.includes(r)), ...refs];
+  send({ type: 'place', nodes: refs, parent: 'root', order });
+}
+
+function reload(ids) {
+  for (const id of ids) chrome.tabs.reload(id).catch(() => {});
+}
+
+// Opera can't unload the tab you are looking at; the others leave memory and load again when opened.
+function unload(ids) {
+  for (const id of ids) {
+    if (!tabs.find(t => t.id === id)?.active) chrome.tabs.discard(id).catch(() => {});
+  }
+}
+
+function copyText(text, done) {
+  const writing = navigator.clipboard?.writeText(text) ?? Promise.reject(new Error('no clipboard'));
+  writing.then(() => flash(done), () => flash('The clipboard refused'));
+}
+
+// Branches as a nested Markdown list, to paste into a ticket or notes.
+function markdownOf(nodes) {
+  const lines = [];
+  const walk = (n, depth) => {
+    const indent = '  '.repeat(depth);
+    if (n.folder) {
+      lines.push(`${indent}- **${n.folder.name}**`);
+    } else {
+      const { text } = cleanTitle(n.tab, n.ticket?.key ?? n.groupKey);
+      const title = n.ticket ? `${n.ticket.key} ${text}` : text;
+      lines.push(`${indent}- [${title.replace(/[[\]]/g, '\\$&')}](${n.tab.url})`);
+    }
+    for (const c of n.children) walk(c, depth + 1);
+  };
+  for (const n of nodes) walk(n, 0);
+  return lines.join('\n');
 }
 
 // ---- selection ----
@@ -198,35 +276,33 @@ function selectedNodes() {
 
 const foldersUnder = n => [...(n.folder ? [n.folder.id] : []), ...n.children.flatMap(foldersUnder)];
 
+function describe(nodes) {
+  const tabCount = new Set(nodes.flatMap(tabIdsUnder)).size;
+  const folderCount = nodes.flatMap(foldersUnder).length;
+  return [tabCount && plural(tabCount, 'tab'), folderCount && plural(folderCount, 'folder')].filter(Boolean).join(', ');
+}
+
 function closeSelection() {
   const nodes = selectedNodes();
   send({ type: 'closeItems', tabIds: [...new Set(nodes.flatMap(tabIdsUnder))], folderIds: nodes.flatMap(foldersUnder) });
   selection.clear();
   anchor = null;
+  render();
 }
 
-// The new folder takes the place of the first selected row, on the nearest level that can hold folders.
 function selectionToFolder() {
   const nodes = selectedNodes();
-  if (!nodes.length) return;
-  let spot = nodes[0];
-  while (spot.parent.tab) spot = spot.parent;
-  const level = spot.parent;
-  const id = newFolderId();
-  const order = level.children.flatMap(n => [...(n === spot ? [folderRef(id)] : []), ...(nodes.includes(n) ? [] : [nodeRef(n)])]);
-  pendingRename = id;
   selection.clear();
   anchor = null;
-  send({ type: 'newFolder', id, parent: level.folder?.id ?? null, items: nodes.map(nodeRef), order });
+  nodesToFolder(nodes);
+  render();
 }
 
 function renderSelBar() {
   const nodes = selectedNodes();
   selBar.hidden = !nodes.length || view !== 'tree';
   if (selBar.hidden) return;
-  const tabCount = new Set(nodes.flatMap(tabIdsUnder)).size;
-  const folderCount = nodes.flatMap(foldersUnder).length;
-  const what = [tabCount && plural(tabCount, 'tab'), folderCount && plural(folderCount, 'folder')].filter(Boolean).join(', ');
+  const what = describe(nodes);
   $('#sel-count').textContent = `${selection.size} selected: ${what || 'nothing'}`;
   $('#sel-close').textContent = armed ? `Sure? Close ${what}` : 'Close';
   $('#sel-close').classList.toggle('armed', !!armed);
@@ -249,8 +325,191 @@ $('#sel-close').onclick = () => {
   clearTimeout(armed);
   armed = 0;
   closeSelection();
-  render();
 };
+
+// ---- menus ----
+// One menu at a time, from ⋯ on a row or a right click: for a folder, for a tab, for the selection (when the
+// clicked row is part of it), or for the empty list. It closes on a click elsewhere, Esc, scrolling, or once
+// one of its items is used; the tree is not redrawn meanwhile.
+
+const menuEl = el('div', 'menu');
+menuEl.setAttribute('role', 'menu');
+menuEl.hidden = true;
+document.body.append(menuEl);
+
+// Items are { label, hint, danger, run }, { colors: current, run(color) }, or '-' between groups; falsy
+// items are left out. `at` is where to open: a point, or the right edge of the ⋯ button (alignRight).
+function openMenu(items, at) {
+  paused = true;
+  menuEl.replaceChildren();
+  let gap = false;
+  for (const item of items.filter(Boolean)) {
+    if (item === '-') {
+      gap = menuEl.childElementCount > 0;
+      continue;
+    }
+    if (gap) menuEl.append(el('div', 'msep'));
+    gap = false;
+    menuEl.append(item.colors ? swatches(item) : menuItem(item));
+  }
+  menuEl.hidden = false;
+  const { width = 0, height = 0 } = menuEl.getBoundingClientRect();
+  const W = document.documentElement.clientWidth;
+  const H = document.documentElement.clientHeight;
+  const x = (at.x ?? 0) - (at.alignRight ? width : 0);
+  const y = at.y ?? 0;
+  menuEl.style.left = `${Math.max(4, Math.min(x, W - width - 4))}px`;
+  menuEl.style.top = `${y + height > H - 4 ? Math.max(4, (at.above ?? y) - height) : y}px`;
+  menuEl.querySelector('button')?.focus();
+}
+
+// Redraws only when something changed meanwhile: a redraw between mousedown and mouseup would swallow the
+// click that closed the menu.
+function closeMenu() {
+  if (menuEl.hidden) return;
+  menuEl.hidden = true;
+  paused = false;
+  if (missed) refresh();
+}
+
+function menuItem({ label, hint, danger, run }) {
+  const b = el('button', danger ? 'mi danger' : 'mi');
+  b.setAttribute('role', 'menuitem');
+  b.append(el('span', 'label', label));
+  if (hint) b.append(el('small', 'hint', hint));
+  b.onclick = () => {
+    closeMenu();
+    run();
+  };
+  return b;
+}
+
+function swatches({ colors: current, run }) {
+  const box = el('div', 'swatches');
+  box.setAttribute('role', 'radiogroup');
+  box.setAttribute('aria-label', 'Folder color');
+  for (const color of COLORS) {
+    const b = el('button', color === current ? 'sw on' : 'sw');
+    b.style.background = GROUP_COLORS[color];
+    b.title = color[0].toUpperCase() + color.slice(1);
+    b.dataset.color = color;
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(color === current));
+    b.onclick = () => {
+      closeMenu();
+      run(color);
+    };
+    box.append(b);
+  }
+  return box;
+}
+
+// Right-clicking a row outside the selection works on that row alone, as in a file manager.
+function menuFor(node) {
+  const ref = nodeRef(node);
+  if (selection.has(ref) && selection.size > 1) return selectionMenu();
+  if (!selection.has(ref)) {
+    anchor = ref;
+    clearSelection();
+  }
+  node = nodeByRef.get(ref) ?? node;
+  return node.folder ? folderMenu(node) : tabMenu(node);
+}
+
+function folderMenu(node) {
+  const f = node.folder;
+  const ids = tabIdsUnder(node);
+  const dups = ids.filter(id => dupIds.has(id));
+  return [
+    { label: 'New folder inside', run: () => addFolder(node) },
+    {
+      label: 'Rename',
+      run: () => {
+        pendingRename = f.id;
+        render();
+      },
+    },
+    { colors: f.color, run: color => send({ type: 'colorFolder', id: f.id, color }) },
+    dups.length > 0 && { label: `Close ${plural(dups.length, 'duplicate')}`, run: () => chrome.tabs.remove(dups) },
+    ids.length > 0 && { label: 'Copy links as Markdown', run: () => copyText(markdownOf([node]), 'Links copied') },
+    '-',
+    { label: 'Delete folder', hint: 'Its tabs move one level up', danger: true, run: () => send({ type: 'deleteFolder', id: f.id }) },
+  ];
+}
+
+function tabMenu(node) {
+  const t = node.tab;
+  const branch = tabIdsUnder(node);
+  const many = branch.length > 1;
+  // A ticket's own page moves with its ticket, as it does when dragged.
+  const unit = node.groupKey ? node.parent : node;
+  return [
+    { label: 'Close tab', hint: 'Middle click', run: () => chrome.tabs.remove(t.id) },
+    many && { label: `Close ${branch.length} tabs`, hint: 'This tab and everything under it', run: () => chrome.tabs.remove(branch) },
+    '-',
+    { label: 'Put into a new folder', run: () => nodesToFolder([unit], unit.ticket ? ticketFolder(unit) : {}) },
+    !unit.parent?.root && { label: 'Move to the top level', run: () => moveToTop([unit]) },
+    '-',
+    { label: 'Copy link', run: () => copyText(t.url, 'Link copied') },
+    many && { label: 'Copy links as Markdown', run: () => copyText(markdownOf([node]), 'Links copied') },
+    '-',
+    { label: many ? `Reload ${branch.length} tabs` : 'Reload', run: () => reload(branch) },
+    { label: many ? `Unload ${branch.length} tabs` : 'Unload from memory', hint: 'Loads again when opened', run: () => unload(branch) },
+  ];
+}
+
+function selectionMenu() {
+  const nodes = selectedNodes();
+  const ids = [...new Set(nodes.flatMap(tabIdsUnder))];
+  return [
+    { label: `Put ${plural(nodes.length, 'item')} into a new folder`, run: selectionToFolder },
+    nodes.some(n => !n.parent?.root) && { label: 'Move to the top level', run: () => moveToTop(nodes) },
+    ids.length > 0 && { label: 'Copy links as Markdown', run: () => copyText(markdownOf(nodes), 'Links copied') },
+    '-',
+    ids.length > 0 && { label: `Reload ${plural(ids.length, 'tab')}`, run: () => reload(ids) },
+    ids.length > 0 && { label: `Unload ${plural(ids.length, 'tab')}`, run: () => unload(ids) },
+    '-',
+    { label: `Close ${describe(nodes)}`, danger: true, run: closeSelection },
+  ];
+}
+
+function moreButton(node) {
+  const b = el('button', 'badge on-hover more', '⋯');
+  b.title = 'More actions (right click)';
+  b.setAttribute('aria-label', 'More actions');
+  b.onclick = e => {
+    e.stopPropagation();
+    const r = b.getBoundingClientRect();
+    openMenu(menuFor(node), { x: r.right, y: (r.bottom ?? 0) + 2, above: (r.top ?? 0) - 2, alignRight: true });
+  };
+  return b;
+}
+
+const onRightClick = (row, node) => {
+  row.oncontextmenu = e => {
+    e.preventDefault();
+    e.stopPropagation();
+    openMenu(menuFor(node), { x: e.clientX, y: e.clientY });
+  };
+};
+
+listEl.addEventListener('contextmenu', e => {
+  if (e.target !== listEl || view !== 'tree' || qEl.value.trim()) return;
+  e.preventDefault();
+  openMenu([{ label: 'New folder', run: () => addFolder(root) }], { x: e.clientX, y: e.clientY });
+});
+document.addEventListener('mousedown', e => {
+  if (!menuEl.hidden && !menuEl.contains(e.target)) closeMenu();
+}, true);
+listEl.addEventListener('scroll', closeMenu);
+window.addEventListener('blur', closeMenu);
+menuEl.addEventListener('keydown', e => {
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+  e.preventDefault();
+  const items = [...menuEl.querySelectorAll('button')];
+  const i = items.indexOf(document.activeElement);
+  items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
+});
 
 // The name is applied while typing and kept when the field loses focus; Esc puts the old name back.
 function startRename(row, folderId) {
@@ -351,6 +610,7 @@ function placement(target, zone) {
 function dragAndDrop(row, node) {
   row.draggable = true;
   row.ondragstart = e => {
+    closeMenu();
     drag = selection.has(nodeRef(node)) && selection.size > 1
       ? { many: selectedNodes() }
       : { node, ticket: node.groupKey ? node.parent : null };
@@ -405,6 +665,7 @@ topZone.ondrop = e => {
 const pad = depth => `${4 + depth * 14}px`;
 const activate = t => chrome.tabs.update(t.id, { active: true });
 const nextColor = color => COLORS[(COLORS.indexOf(color) + 1) % COLORS.length];
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 function button(cls, text, title, onClick) {
   const b = el('button', cls, text);
@@ -499,13 +760,13 @@ function renderFolder(node, depth, out) {
     el('span', 'title', f.name),
     ...dupButton(ids),
     button('badge on-hover', '+', 'New folder inside', () => addFolder(node)),
-    button('badge on-hover', '✎', 'Rename folder', () => startRename(row, f.id)),
-    button('badge on-hover', '✕', 'Delete folder; what is inside moves one level up', () => send({ type: 'deleteFolder', id: f.id })),
+    moreButton(node),
     el('span', 'count', String(ids.length)),
   );
   row.onclick = e => {
     if (!clickSelects(e, node)) toggle(id);
   };
+  onRightClick(row, node);
   dragAndDrop(row, node);
   out.append(row);
   if (!isCollapsed) for (const c of node.children) renderNode(c, depth + 1, out);
@@ -548,14 +809,109 @@ function renderNode(node, depth, out) {
   if (ticket && node.parent?.root) {
     row.append(button('badge on-hover', '→ folder', `Put ${ticket.key} and everything under it into a new folder`, () => familyToFolder(node)));
   }
+  row.append(button('badge on-hover close', '✕', 'Close tab (middle click)', () => chrome.tabs.remove(t.id)), moreButton(node));
   row.classList.toggle('selected', selection.has(nodeRef(node)));
   visible.push(nodeRef(node));
   row.onclick = e => {
     if (!clickSelects(e, node)) activate(t);
   };
+  onRightClick(row, node);
   dragAndDrop(row, node);
   out.append(row);
   if (!isCollapsed) for (const c of node.children) renderNode(c, depth + 1, out);
+}
+
+// ---- search ----
+
+// The text with every occurrence of the search words marked.
+function marked(text, terms) {
+  const frag = document.createDocumentFragment();
+  const lower = text.toLowerCase();
+  if (lower.length !== text.length) {
+    frag.append(text);
+    return frag;
+  }
+  let at = 0;
+  for (;;) {
+    let best = -1;
+    let len = 0;
+    for (const s of terms) {
+      const i = lower.indexOf(s, at);
+      if (i !== -1 && (best === -1 || i < best || (i === best && s.length > len))) {
+        best = i;
+        len = s.length;
+      }
+    }
+    if (best === -1) break;
+    if (best > at) frag.append(text.slice(at, best));
+    frag.append(el('mark', null, text.slice(best, best + len)));
+    at = best + len;
+  }
+  frag.append(text.slice(at));
+  return frag;
+}
+
+function shortTitle(tab) {
+  const { text } = cleanTitle(tab);
+  return text.length > 30 ? `${text.slice(0, 29)}…` : text;
+}
+
+// Where a tab sits: the folders and the tickets or pages above it, top down.
+function crumbs(t) {
+  const box = el('span', 'crumbs');
+  if (otherIds.has(t.id)) {
+    box.textContent = `Workspace ${t.workspaceName || ''} · opens there`;
+    return box;
+  }
+  if (t.pinned) {
+    box.textContent = 'Pinned';
+    return box;
+  }
+  const parts = [];
+  let color = null;
+  for (let n = treeNodes.get(t.id)?.parent; n && !n.root; n = n.parent) {
+    if (n.folder) {
+      parts.unshift(n.folder.name);
+      if (n.parent?.root) color = n.folder.color;
+    } else {
+      parts.unshift(n.ticket?.key ?? shortTitle(n.tab));
+    }
+  }
+  if (color) box.append(colorDot(color));
+  box.append(parts.length ? parts.join(' › ') : 'Top level');
+  return box;
+}
+
+// A search result: the row's text with the matches marked and, under it, where the tab sits in the tree.
+function hitRow(t, terms) {
+  const key = ticketKey(t) ?? undefined;
+  const { text, kind, draft } = rowLabel(t, key, null);
+  const row = el('div', 'row hit');
+  row.classList.toggle('active', t.active);
+  row.classList.toggle('discarded', !!t.discarded);
+  const line = el('span', 'line');
+  if (key) line.append(el('span', 'key', key));
+  const title = el('span', 'title');
+  title.append(marked(text, terms));
+  line.append(title);
+  if (kind) line.append(el('span', 'badge', kind));
+  if (draft) line.append(el('span', 'badge', 'draft'));
+  if (dupIds.has(t.id)) line.append(el('span', 'badge dup', 'dup'));
+  if (otherIds.has(t.id)) line.append(el('span', 'badge', t.workspaceName || 'other workspace'));
+  const body = el('span', 'body');
+  body.append(line, crumbs(t));
+  row.append(favicon(t), body);
+  row.title = `${t.title}\n${t.url}`;
+  row.onclick = () => activate(t);
+  row.onmousedown = e => {
+    if (e.button === 1) e.preventDefault();
+  };
+  row.onauxclick = e => {
+    if (e.button === 1) chrome.tabs.remove(t.id);
+  };
+  const node = treeNodes.get(t.id);
+  if (node) onRightClick(row, node);
+  return row;
 }
 
 function renderSearch(q, out) {
@@ -565,15 +921,121 @@ function renderSearch(q, out) {
     return terms.every(s => hay.includes(s));
   });
   selected = Math.max(0, Math.min(selected, hits.length - 1));
+  if (!hits.length) {
+    out.append(el('div', 'note', 'No tabs match. Every word has to match a title, URL, ticket key or page kind (mr, pipeline, jira); all workspaces are searched.'));
+    return;
+  }
+  out.append(el('div', 'meta', `${plural(hits.length, 'tab')} · ↑ ↓ move · Enter opens · Esc clears`));
   hits.forEach((t, i) => {
-    const key = ticketKey(t) ?? undefined;
-    const row = tabRow(t, 0, { key, label: rowLabel(t, key, null) });
-    if (otherIds.has(t.id)) row.append(el('span', 'badge', t.workspaceName || 'other workspace'));
+    const row = hitRow(t, terms);
     if (i === selected) row.classList.add('sel');
     out.append(row);
   });
-  if (!hits.length) out.append(el('div', 'note', 'No matches'));
 }
+
+// ---- setup guide and settings ----
+
+function guideCard() {
+  const card = el('section', 'card guide');
+  card.setAttribute('aria-label', 'Setup');
+  card.append(el('h4', null, 'Set up TabTree'), el('p', null, 'Three things in Opera, once. Click a step to mark it done.'));
+  const done = settings.setup ?? {};
+  const steps = el('ol', 'steps');
+  SETUP_STEPS.forEach(([id, name, text], i) => {
+    const li = el('li');
+    li.dataset.step = id;
+    li.classList.toggle('done', !!done[id]);
+    const words = el('span');
+    words.append(el('b', null, name), el('span', 'muted', text));
+    li.append(el('span', 'num', done[id] ? '✓' : String(i + 1)), words);
+    li.title = done[id] ? 'Mark as not done' : 'Mark as done';
+    li.onclick = () => setSetting('setup', (setup = {}) => ({ ...setup, [id]: !setup[id] }));
+    steps.append(li);
+  });
+  const actions = el('div', 'actions');
+  actions.append(
+    button('btn primary', 'Got it', "Don't show the guide again (Settings can bring it back)", () => {
+      settings = { ...settings, onboarded: true };
+      setSetting('onboarded', true);
+      render();
+    }),
+    button('btn', 'Later', 'Hide the guide until the panel is opened again', () => {
+      guideLater = true;
+      render();
+    }),
+  );
+  card.append(steps, actions);
+  return card;
+}
+
+function showGuide() {
+  guideLater = false;
+  settings = { ...settings, onboarded: false };
+  setSetting('onboarded', false);
+  switchView('tree');
+}
+
+function renderSettings() {
+  const out = el('div', 'settings');
+  const section = name => out.append(el('h3', null, name));
+  const option = (name, text, control) => {
+    const opt = el('div', 'opt');
+    const words = el('div', 'txt');
+    words.append(el('b', null, name), el('p', null, text));
+    opt.append(words, control);
+    out.append(opt);
+  };
+  const toggleBox = (id, on, set) => {
+    const box = el('input', 'switch');
+    box.type = 'checkbox';
+    box.id = id;
+    box.checked = on;
+    box.onchange = () => set(box.checked);
+    return box;
+  };
+
+  section('Tree');
+  option('Auto-folders', 'A ticket family on the top level gets a folder of its own once it has a second tab.',
+    toggleBox('set-auto-folders', settings.autoFolders !== false, on => setSetting('autoFolders', on)));
+  const keys = Object.keys(declined).sort();
+  const chips = el('div', 'chips');
+  chips.append(el('span', 'muted', keys.length ? 'Never for' : 'No ticket is kept out of automatic folders.'));
+  for (const key of keys) {
+    const chip = el('span', 'chip', key);
+    chip.dataset.key = key;
+    chip.append(button('chip-x', '✕', `Allow a folder for ${key}`, () => send({ type: 'allowAutoFolder', key })));
+    chips.append(chip);
+  }
+  out.append(chips);
+
+  section('Opera');
+  const mirrorOn = !!chrome.tabGroups && settings.mirrorIslands !== false;
+  option('Islands', "Every top-level folder with two or more tabs is an island in Opera's tab strip. Changes made to islands in Opera are put back.",
+    toggleBox('set-mirror', mirrorOn, on => setSetting('mirrorIslands', on)));
+  const islands = el('ul', 'islands');
+  for (const n of root.children.filter(c => c.folder)) {
+    const count = tabIdsUnder(n).length;
+    const state = !mirrorOn ? 'islands are off' : count >= 2 ? 'island' : count === 1 ? 'no island, Opera needs 2' : 'no island';
+    const li = el('li');
+    li.dataset.folder = n.folder.id;
+    li.append(colorDot(n.folder.color), el('span', 'title', n.folder.name), el('span', 'count', `${plural(count, 'tab')} · ${state}`));
+    islands.append(li);
+  }
+  if (!islands.childElementCount) islands.append(el('li', 'muted', 'No folders on the top level yet.'));
+  out.append(islands);
+
+  section('Diagnostics');
+  option('Report', "Opera's version and APIs, counts, the snapshot and the last 60 events. Paste it into a session.",
+    button('btn', 'Copy', 'Copy the report', copyReport));
+  option('Log', 'The same report, live.', button('btn', 'Open', 'Open the log', () => switchView('log')));
+
+  section('Setup');
+  option('Setup guide', "Pin the panel, collapse Opera's tab strip, turn off Opera's own Tab Islands.",
+    button('btn', 'Show', 'Show the setup guide above the tree', showGuide));
+  listEl.replaceChildren(out);
+}
+
+// ---- the whole panel ----
 
 function renderPinned() {
   pinnedEl.replaceChildren();
@@ -590,8 +1052,6 @@ function renderPinned() {
   pinnedEl.hidden = !pinnedEl.childElementCount;
 }
 
-const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
-
 function renderStats() {
   const keys = new Set(tabs.map(t => ticketKey(t)).filter(Boolean));
   const others = otherIds.size ? ` (+${otherIds.size} in other workspaces)` : '';
@@ -599,13 +1059,23 @@ function renderStats() {
 }
 
 function render() {
-  if (paused) return;
+  if (paused) {
+    missed = true;
+    return;
+  }
+  missed = false;
+  const tree = buildTree(tabs.filter(t => !t.pinned), parents, folders, ranks);
+  root = tree.root;
+  treeNodes = tree.nodes;
+  nodeByRef = new Map([...tree.nodes.values(), ...tree.folderNodes.values()].map(n => [nodeRef(n), n]));
+  for (const ref of selection) if (!nodeByRef.has(ref)) selection.delete(ref);
   renderPinned();
   renderStats();
   const q = qEl.value.trim().toLowerCase();
-  if (!q && view === 'log') {
+  if (!q && view !== 'tree') {
     renderSelBar();
-    renderLog();
+    if (view === 'log') renderLog();
+    else renderSettings();
     return;
   }
   const scroll = listEl.scrollTop;
@@ -613,11 +1083,8 @@ function render() {
   if (q) {
     renderSearch(q, out);
   } else {
-    const tree = buildTree(tabs.filter(t => !t.pinned), parents, folders, ranks);
-    root = tree.root;
-    nodeByRef = new Map([...tree.nodes.values(), ...tree.folderNodes.values()].map(n => [nodeRef(n), n]));
-    for (const ref of selection) if (!nodeByRef.has(ref)) selection.delete(ref);
     visible = [];
+    if (!settings.onboarded && !guideLater) out.append(guideCard());
     for (const n of withOtherWorkspaces(root.children)) renderNode(n, 0, out);
   }
   renderSelBar();
@@ -679,7 +1146,7 @@ async function buildReport() {
   const workspaces = new Map();
   for (const t of allTabs) workspaces.set(t.workspaceName ?? '(none)', (workspaces.get(t.workspaceName ?? '(none)') ?? 0) + 1);
   const currentWs = tabs[0]?.workspaceName ?? '(none)';
-  const { log = [], changes = [], settings = {}, snapshot } = await chrome.storage.local.get(['log', 'changes', 'settings', 'snapshot']);
+  const { log = [], changes = [], snapshot } = await chrome.storage.local.get(['log', 'changes', 'snapshot']);
   const { mirror = {} } = await chrome.storage.session.get('mirror').catch(() => ({}));
   const savedAt = snapshot ? new Date(snapshot.savedAt).toLocaleTimeString('en-GB', { hour12: false }) : null;
   const lines = [
@@ -691,7 +1158,7 @@ async function buildReport() {
     `- chrome.sidebarAction: ${yes(chrome.sidebarAction)} · chrome.sidePanel: ${yes(chrome.sidePanel)} · chrome.tabGroups: ${yes(chrome.tabGroups)}`,
     `- Tabs in window: ${allTabs.length} (pinned ${count(t => t.pinned)}, active ${count(t => t.active)}, discarded ${count(t => t.discarded)}, in an island ${count(t => (t.groupId ?? -1) !== -1)}); lastAccessed: ${yes(allTabs.some(t => typeof t.lastAccessed === 'number'))}`,
     `- Workspaces: ${[...workspaces].map(([name, n]) => `«${name}» ${n}${name === currentWs ? ' (current)' : ''}`).join('; ')}`,
-    `- Folders: ${Object.keys(folders).length}; mirrored as islands: ${settings.mirrorIslands === false ? 'off' : Object.keys(mirror).length}; ordered by hand: ${Object.keys(ranks).length}`,
+    `- Folders: ${Object.keys(folders).length}; mirrored as islands: ${settings.mirrorIslands === false ? 'off' : Object.keys(mirror).length}; ordered by hand: ${Object.keys(ranks).length}; kept out of automatic folders: ${Object.keys(declined).length}`,
     `- Tab placements: ${tabs.filter(t => parents[t.id] != null).length} of ${tabs.length} tabs; ticket keys: ${tabs.filter(t => ticketKey(t)).length} tabs, ${keys.size} distinct`,
     `- Snapshot for restarts: ${snapshot ? `${snapshot.tabs.length} tabs, ${snapshot.tabs.filter(s => s.parent != null).length} placements, saved ${savedAt}` : 'none yet'}`,
   ];
@@ -712,7 +1179,7 @@ function flash(msg) {
   setTimeout(renderStats, 2500);
 }
 
-$('#report').onclick = async () => {
+async function copyReport() {
   const text = await buildReport();
   try {
     await navigator.clipboard.writeText(text);
@@ -726,33 +1193,31 @@ $('#report').onclick = async () => {
   listEl.replaceChildren(ta);
   ta.select();
   flash(document.execCommand('copy') ? 'Report copied (Esc to go back)' : 'Copy it manually: Ctrl+C, then Esc');
-};
+}
+
+$('#report').onclick = copyReport;
 
 $('#new-folder').onclick = () => {
-  if (view !== 'tree' || !root) return;
+  if (!root) return;
   qEl.value = '';
+  if (view !== 'tree') switchView('tree');
   addFolder(root);
 };
 
-async function setSetting(name, value) {
-  const { settings = {} } = await chrome.storage.local.get('settings');
-  await chrome.storage.local.set({ settings: { ...settings, [name]: value } });
-}
-
-mirrorEl.onchange = () => setSetting('mirrorIslands', mirrorEl.checked);
-autoFoldersEl.onchange = () => setSetting('autoFolders', autoFoldersEl.checked);
-
 // ---- wiring ----
+
+function switchView(next) {
+  view = next;
+  if (next !== 'settings') prefs.set('view', next);
+  for (const b of document.querySelectorAll('#views button[data-view]')) b.classList.toggle('on', b.dataset.view === next);
+  closeMenu();
+  paused = false;
+  render();
+}
 
 for (const b of document.querySelectorAll('#views button[data-view]')) {
   b.classList.toggle('on', b.dataset.view === view);
-  b.onclick = () => {
-    view = b.dataset.view;
-    prefs.set('view', view);
-    for (const x of document.querySelectorAll('#views button[data-view]')) x.classList.toggle('on', x === b);
-    paused = false;
-    render();
-  };
+  b.onclick = () => switchView(b.dataset.view);
 }
 
 qEl.addEventListener('input', () => {
@@ -769,12 +1234,18 @@ qEl.addEventListener('keydown', e => {
   }
 });
 document.addEventListener('keydown', e => {
+  // While a menu is open, keys belong to it: Esc closes it, and nothing else reaches the tree.
+  if (!menuEl.hidden) {
+    if (e.key === 'Escape') closeMenu();
+    return;
+  }
   if (e.key === 'Escape') {
     paused = false;
     qEl.value = '';
     selection.clear();
     anchor = null;
-    render();
+    if (view !== 'tree') switchView('tree');
+    else render();
   } else if (e.key === 'Delete' && selection.size && document.activeElement !== qEl) {
     $('#sel-close').click();
   } else if (e.key === '/' && document.activeElement !== qEl) {
@@ -797,7 +1268,7 @@ for (const name of ['onCreated', 'onRemoved', 'onUpdated', 'onMoved', 'onActivat
 }
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
-  if (['parents', 'folders', 'ranks', 'settings'].some(k => k in changes)) refresh();
+  if (['parents', 'folders', 'ranks', 'settings', 'declined'].some(k => k in changes)) refresh();
   else if (view === 'log') render();
 });
 

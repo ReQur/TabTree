@@ -27,9 +27,10 @@ Opera: tabs, islands (tab groups), workspaces
 - `titles.js`: pure. Ticket keys, title cleanup, page kinds, row labels, folder names and colors for tickets.
 - `snapshot.js`: pure. Snapshot format and matching restored tabs back to it.
 - `panel.html` / `panel.css` / `panel.js`: the UI.
-  - Reads tabs and storage, draws the tree, handles search, selection and drag and drop.
-  - Turns every change into a command for the background. It never writes the tree itself.
-  - Also builds the diagnostics report.
+  - Reads tabs and storage, draws the tree, handles search, selection, menus and drag and drop.
+  - Turns every change into a command for the background. It never writes the tree itself; it writes only
+    `settings`, and acts on tabs directly for close, reload and unload.
+  - Also draws Settings and the setup guide, and builds the diagnostics report.
 - `icons/`: generated PNGs (16, 32, 48, 128).
 
 No build step and no runtime dependencies. `package.json` exists only for the tests (jsdom).
@@ -43,8 +44,8 @@ No build step and no runtime dependencies. `package.json` exists only for the te
 | `parents` | `{ [tabId]: number \| "f:<folderId>" \| -1 }` | where a tab is placed: under a tab, straight in a folder, or on the top level by hand. Written when a tab opens (its opener) and by drag and drop. Ignored for a ticket's non-root pages, which always hang under the ticket's root. |
 | `folders` | `{ [id]: { name, color, parent: id \| null, created, key?, auto? } }` | folder ids are stable across restarts (base36 time + random). `key` = the ticket a family folder was made for; `auto` = made automatically (dropped on rename). |
 | `ranks` | `{ ["t:<tabId>" \| "f:<folderId>"]: number }` | order among siblings, written for a whole sibling list at a time by drops and new folders. Unranked siblings go after ranked ones. |
-| `settings` | `{ autoFolders?: bool, mirrorIslands?: bool }` | footer switches; missing = on. |
-| `declined` | `{ [ticketKey]: true }` | tickets never to get an automatic folder again. |
+| `settings` | `{ autoFolders?: bool, mirrorIslands?: bool, onboarded?: bool, setup?: { pin?, tabs?, islands?: bool } }` | the Settings switches (missing = on), written by the panel. `onboarded` = the setup guide was dismissed with Got it; `setup` = its steps ticked by hand. |
+| `declined` | `{ [ticketKey]: true }` | tickets never to get an automatic folder again. Shown in Settings › Never for; `allowAutoFolder` removes one. |
 | `snapshot` | `{ savedAt, tabs: [{ url, title, parent, rank? }] }` | the tree for the next session; see Restarts. |
 | `log`, `changes` | arrays of events (last 200 / 100) | for the report. |
 
@@ -55,8 +56,9 @@ No build step and no runtime dependencies. `package.json` exists only for the te
 | `sid` | set by the first worker of a session. When it is missing, the worker restores the tree. |
 | `mirror` | `{ "<folderId>\|<windowId>\|<workspaceId>": groupId }`: which island mirrors which folder. |
 
-The panel's `localStorage` holds per-viewer conveniences only: `view` (`tree` / `log`) and `collapsed` (keys
-`<view>:t:<tabId>`, `<view>:f:<folderId>`, `<view>:ws:<workspaceId>`).
+The panel's `localStorage` holds per-viewer conveniences only: `view` (`tree` / `log`; Settings isn't remembered)
+and `collapsed` (keys `<view>:t:<tabId>`, `<view>:f:<folderId>`, `<view>:ws:<workspaceId>`). "Later" on the setup
+guide is kept in memory only, so the guide comes back when the panel is opened again.
 
 A tab row that is folded has a key with a tab id, and tab ids change on restart, so tab rows unfold after one.
 
@@ -73,6 +75,7 @@ at a time and wait until the start-up restore is done.
 | `colorFolder` | `id`, `color` | one of the 9 Chromium group colors. |
 | `deleteFolder` | `id` | contents move to the nearest surviving ancestor (or the top level); the folder's `key` goes to `declined`. |
 | `closeItems` | `tabIds`, `folderIds` | closes the tabs and deletes the folders, without declining. |
+| `allowAutoFolder` | `key` | removes the key from `declined` and schedules a tidy pass, so a family that qualifies gets its folder right away. |
 
 A ref is `"t:<tabId>"` or `"f:<folderId>"` (`nodeRef()` in tree.js).
 
@@ -155,11 +158,15 @@ The panel builds the tree for the current workspace. The background builds one p
 ## The panel (`panel.js`)
 
 - **Rendering:**
-  - `refresh()` (120 ms debounce, on any tab event or tree/settings storage change) → `load()` → `render()`;
-  - `render()` redraws the whole list; that's fine for a few hundred rows;
-  - `paused` freezes rendering while dragging, renaming, or showing the copy fallback.
-- **The drawn tree** is kept for the handlers: `root`, `nodeByRef` (ref → node), `visible` (refs in drawn order, used
-  by Shift ranges).
+  - `refresh()` (120 ms debounce, on any tab event or a change of `parents`, `folders`, `ranks`, `settings` or
+    `declined`) → `load()` → `render()`;
+  - `render()` builds the tree first in every view, then draws the tree (with the setup guide above it), the search
+    results, the Log or Settings. It redraws the whole list; that's fine for a few hundred rows;
+  - `paused` freezes rendering while dragging, renaming, a menu is open, or the copy fallback shows. A render asked
+    for meanwhile sets `missed`, and closing a menu redraws only then: a redraw between mousedown and mouseup would
+    swallow the click that closed the menu.
+- **The drawn tree** is kept for the handlers: `root`, `treeNodes` (tab id → node, for search paths), `nodeByRef`
+  (ref → node), `visible` (refs in drawn order, used by Shift ranges).
 - **Selection:**
   - a `selection` set of refs plus an `anchor`; `clickSelects()` handles Ctrl, Shift and plain clicks;
   - `selectedNodes()` normalizes: a ticket's page becomes its ticket root, rows under another selected row are
@@ -172,7 +179,22 @@ The panel builds the tree for the current workspace. The background builds one p
 - **New folders:**
   - the panel makes the folder id itself, so it can put the folder into `order` and open it for renaming;
   - `pendingRename` holds that id until the row is drawn;
-  - renaming sends `renameFolder` 250 ms after the last keystroke, and again on blur.
+  - renaming sends `renameFolder` 250 ms after the last keystroke, and again on blur;
+  - `nodesToFolder(nodes, props)` is shared by → Folder, the menus and `familyToFolder()`: the folder goes in place
+    of the first node's branch, on the nearest level that can hold folders. `ticketFolder(node)` gives a ticket's
+    name, color and key; without a name the folder opens for renaming.
+- **Menus:**
+  - one `.menu` element on `body`. `openMenu(items, at)` takes `{ label, hint, danger, run }` items,
+    `{ colors, run }` for the color squares, and `'-'` between groups (falsy items are dropped, so conditions sit
+    inline). It is placed at the pointer, or under the ⋯ button's right edge, and flips up when there is no room;
+  - `menuFor(node)`: the selection's menu when the row is part of a selection of 2+, else `folderMenu()` or
+    `tabMenu()`, after dropping the selection and moving the anchor to the row;
+  - actions: `moveToTop()` (a `place` to `root`), `reload()`, `unload()` (`tabs.discard`, never the active tab),
+    `copyText()` (`navigator.clipboard`), `markdownOf()` (a nested list of branches).
+- **Search results:** `hitRow()` draws a result with `marked()` (the words found, in `<mark>`) and `crumbs()` (the
+  path from `treeNodes`, or where else the tab is).
+- **Settings and the guide:** `renderSettings()` draws the Settings view into the list; `guideCard()` draws the setup
+  guide. Both write `settings` through `setSetting()`, a read-modify-write of the whole object.
 - **Workspaces:** `splitWorkspaces()` picks the workspace whose active tab has the highest `lastAccessed`. Opera
   reports every tab of every workspace in the window, and each workspace has its own active tab.
 
@@ -184,7 +206,9 @@ The panel builds the tree for the current workspace. The background builds one p
   - `sidebar_action` in an MV3 manifest works, through `opr.sidebarAction` (badges, icon, panel, title, onFocus/onBlur);
   - there is no `open()`, so the panel can't be opened from code;
   - `chrome.sidePanel` and `chrome.sidebarAction` don't exist;
-  - when not pinned, the panel covers the page.
+  - when not pinned, the panel covers the page;
+  - a pinned panel stays on screen when a page goes full screen (a video). Opera hides its own UI but keeps pinned
+    panels, and there is no API to close, hide or resize the panel.
 - **Islands are Chromium tab groups:**
   - `chrome.tabGroups` and `tabs.group` / `ungroup` / `tabGroups.update` all work;
   - Opera shows an island without a title as "Tab island N", but its `title` is `''`;
@@ -218,8 +242,11 @@ The panel builds the tree for the current workspace. The background builds one p
 - `tests/helpers/opera-fake.js` is a fake of the Opera APIs the background uses: tabs, islands that vanish when
   empty, storage, events. `open()` opens a tab, `close()` closes one, `setGroup()` imitates a change made in Opera,
   and `ask()` sends a panel command.
-- `tests/helpers/panel-env.js` loads `panel.html` + `panel.js` into jsdom with a fake API and records the messages
-  the panel sends. Its helpers `click` / `drag` / `fire` / `key` / `selected` look rows up by text.
+- `tests/helpers/panel-env.js` loads `panel.html` + `panel.js` into jsdom with a fake API. It records the messages
+  the panel sends, the tabs it opens, closes, reloads and unloads, the text it copies and the settings it writes
+  (`storage.local.set` updates the store and notifies the panel, as Opera does). Its helpers `click` / `drag` /
+  `fire` / `key` / `selected` / `search` look rows up by text; `rightClick` / `more` / `menu` / `hint` / `pick` open
+  menus and use them.
 - `tests/helpers/check.js`: `check(label, ok)` prints PASS/FAIL and fails the file on FAIL.
 
 | file | covers |
@@ -232,8 +259,12 @@ The panel builds the tree for the current workspace. The background builds one p
 | `restart.test.js` | two sessions, shutdown guard, restore with folders and order |
 | `panel-dnd.test.js` | drawing, drop zones and their messages, folder actions |
 | `panel-selection.test.js` | Ctrl/Shift/anchor, selection bar, dragging a selection |
+| `panel-menus.test.js` | ✕ and ⋯ on rows, the tab, folder, selection and empty-list menus |
+| `panel-settings.test.js` | the setup guide, Settings: switches, Never for, island states, diagnostics |
+| `panel-search.test.js` | the count line, marked matches, paths under results, menus on results |
 
 Everything is tested against fakes, never against real Opera. After a change, ask the repo owner to reload the
 extension and look, or to paste **Copy report**. The panel tests find elements by id and class (`#list .row`,
-`.title`, `.dot`, `#selbar`, `#sel-close`, `input.rename`, `.drop-zone`…) and by row text. A redesign that changes
+`.title`, `.dot`, `#selbar`, `#sel-close`, `input.rename`, `.drop-zone`, `.menu .mi .label`, `.settings`, `.card`,
+`.row.hit .crumbs`…) and by row text; UI.md lists them. A redesign that changes
 them has to update the helpers and tests too.

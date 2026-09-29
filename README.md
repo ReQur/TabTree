@@ -15,7 +15,9 @@ An Opera extension that shows your tabs as a tree in the sidebar, the way an IDE
   folder (or drag the family out of it) and it won't come back.
 - **Drag and drop:** the upper or lower edge of a row puts the item before or after it, the middle puts it inside.
 - **Multi-select** with Ctrl+click and Shift+click; move the selection, put it into a new folder, or close it.
-- **Search** by words, ticket number or page kind (`/` to focus).
+- **Menus** on ⋯ and right click: close, reload or unload a whole branch, put it into a folder, copy its links as
+  Markdown, recolor or delete a folder.
+- **Search** by words, ticket number or page kind (`/` to focus); each result shows where its tab sits in the tree.
 - **Duplicates** of an already open URL are marked and can be closed in one click.
 - **Survives restarts:** the tree is saved as it changes and matched back to the restored tabs by URL.
 
@@ -28,7 +30,9 @@ The full list is in [docs/FEATURES.md](docs/FEATURES.md).
 3. Recommended: turn on vertical tabs (Settings → Browser → Tabs) and keep them collapsed, and turn off Opera's
    automatic Tab Islands so they don't compete with the extension's folders.
 
-The **Log** view and **Copy report** button show what the extension sees and does, for troubleshooting.
+A setup guide above the tree lists these steps until you dismiss it. **Settings** holds the switches and the
+tickets kept out of automatic folders. The **Log** view and **Copy report** show what the extension sees and does,
+for troubleshooting.
 
 ## Development
 
