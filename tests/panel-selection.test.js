@@ -23,12 +23,13 @@ const shift = (row, extra = {}) => click(row, { shiftKey: true, ...extra });
 click('Loose one', { ctrlKey: true });
 click('Dashboard A', { ctrlKey: true });
 check(`Ctrl+click selects rows one by one: ${selected()}`, selected().join() === 'Dashboard A,Loose one' && !$('#selbar').hidden);
-check(`the selection bar counts them: «${$('#sel-count').textContent}»`, $('#sel-count').textContent === '2 selected: 2 tabs');
+const bar = () => `${$('#sel-count').hidden ? '' : `${$('#sel-count').textContent}: `}${$('#sel-what').textContent}`;
+check(`the selection bar counts them: «${bar()}»`, bar() === '2 selected: 2 tabs');
 click('Dashboard A', { ctrlKey: true });
 check('Ctrl+click on a selected row unselects it', selected().join() === 'Loose one');
 shift('Dashboards');
 check(`Shift+click selects from the last Ctrl-clicked row: ${selected()}`, selected().join() === 'Dashboards,Dashboard A');
-check('a folder and a row inside it count once', $('#sel-count').textContent === '2 selected: 2 tabs, 1 folder');
+check('a folder and a row inside it count once', bar() === '2 selected: 2 tabs, 1 folder');
 
 click('Loose one');
 check('a plain click clears the selection and opens the tab', selected().length === 0 && p.activated.at(-1) === 5 && $('#selbar').hidden);
@@ -60,7 +61,8 @@ await wait(200);
 check('dragging a selected row moves the whole selection, in drawn order', last().type === 'place' && last().nodes.join() === 't:2,t:6' && last().parent === 'root' && last().order.join().includes('t:3,t:2,t:6'));
 
 $('#sel-close').click();
-check(`closing two tabs asks first: «${$('#sel-close').textContent}»`, last().type === 'place' && $('#sel-close').textContent.startsWith('Sure?'));
+check(`closing two tabs asks first: «${bar()}»`, last().type === 'place' && $('#selbar').classList.contains('armed') && bar() === 'Close 2 tabs?'
+  && !$('#sel-cancel').hidden && $('#sel-folder').hidden && !$('#selbar .timer').hidden);
 $('#sel-close').click();
 check('the second click closes them', last().type === 'closeItems' && last().tabIds.join() === '2,6' && selected().length === 0);
 await wait(200);
@@ -75,5 +77,5 @@ check("→ Folder: a ticket's page stands for its ticket; the folder takes the f
 click('Dashboard A', { ctrlKey: true });
 click('Dashboard B', { ctrlKey: true });
 p.key('Delete');
-check('Delete works like Close (asks first)', $('#sel-close').textContent.startsWith('Sure?'));
+check('Delete works like Close (asks first)', $('#selbar').classList.contains('armed') && bar() === 'Close 2 tabs?');
 done();

@@ -32,13 +32,15 @@ const crumbs = text => hit(text).querySelector('.crumbs').textContent;
 const marks = text => [...hit(text).querySelectorAll('mark')].map(m => m.textContent).join();
 
 search('latency');
-check(`the count and the keys: «${$('.meta')?.textContent}»`, $('.meta')?.textContent === '4 tabs · ↑ ↓ move · Enter opens · Esc clears' && hits().length === 4);
+const meta = () => [...p.w.document.querySelectorAll('.meta span')].map(s => s.textContent).join(' | ');
+check(`the count and the keys: «${meta()}»`, meta() === '4 tabs | ↑ ↓ move · ↵ open · Esc clear' && hits().length === 4);
 check(`the match is marked in the title: ${marks('spike')}`, marks('spike') === 'latency' && hit('spike').querySelector('.key').textContent === 'PROJ-140');
 check(`under it, the path in the tree: «${crumbs('spike')}»`, crumbs('spike') === 'Release 2.4 › PROJ-101 › PROJ-140');
-check('with the color of the top-level folder', !!hit('spike').querySelector('.crumbs .dot'));
+check('with the color of the top-level folder', hit('spike').querySelector('.crumbs .sq')?.classList.contains('c-blue'));
+check(`the kind as an icon and the number: «${hit('spike').querySelector('.kind')?.textContent}»`, hit('spike').querySelector('.kind')?.textContent === '!42');
 check(`a page without a key above a tab shows its title: «${crumbs('budget')}»`, crumbs('budget') === 'Merge requests');
-check(`a top-level tab: «${crumbs('dashboard')}»`, crumbs('dashboard') === 'Top level' && !hit('dashboard').querySelector('.crumbs .dot'));
-check(`a tab of another workspace: «${crumbs('notes')}»`, crumbs('notes') === 'Workspace Personal · opens there' && [...hit('notes').querySelectorAll('.badge')].some(b => b.textContent === 'Personal'));
+check(`a top-level tab: «${crumbs('dashboard')}»`, crumbs('dashboard') === 'Top level' && !hit('dashboard').querySelector('.crumbs .sq'));
+check(`a tab of another workspace: «${crumbs('notes')}»`, crumbs('notes') === 'Workspace Personal · opens there' && hit('notes').querySelector('.badge.ws')?.textContent === 'Personal');
 search('team');
 check(`a pinned tab: «${crumbs('Team')}»`, crumbs('Team') === 'Pinned');
 search('LATENCY mr');
@@ -46,10 +48,14 @@ check(`every word must match; the marks ignore case: ${hits().length} hits, ${ma
 search('fix spike');
 check(`several words are all marked: ${marks('spike')}`, marks('spike') === 'Fix,spike');
 search('zzz');
-check(`no matches: «${$('#list .note')?.textContent}»`, $('#list .note')?.textContent.startsWith('No tabs match. Every word has to match a title, URL, ticket key or page kind') && !$('.meta'));
+check(`no matches: «${$('#list .empty h4')?.textContent}»`, $('#list .empty h4')?.textContent === 'No tabs match'
+  && $('#list .empty p').textContent.startsWith('Every word has to match a title, URL, ticket key or page kind') && !$('.meta'));
+[...p.w.document.querySelectorAll('#list .empty button')].find(b => b.textContent.startsWith('Clear search')).click();
+check('with a button that clears the search', $('#q').value === '' && !!p.row('Release 2.4'));
 
 search('latency');
 p.w.document.querySelector('#q').dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'ArrowDown' }));
+check('↓ moves the highlight', hits()[1].classList.contains('hl') && !hits()[0].classList.contains('hl'));
 p.w.document.querySelector('#q').dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Enter' }));
 check('↓ and Enter open the second result', p.activated.at(-1) === 4);
 p.rightClick(hit('spike'));

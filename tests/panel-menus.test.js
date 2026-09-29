@@ -34,21 +34,24 @@ const p = await loadPanel({
   },
 });
 const { menu, pick, rightClick, last } = p;
-const buttons = text => [...p.row(text).querySelectorAll('button')].map(b => b.textContent).join();
+const buttons = text => p.buttons(text).join();
 
-check(`a tab row has ✕ and ⋯ on hover: ${buttons('Child page')}`, buttons('Child page') === '✕,⋯');
-check(`a top-level ticket also has → folder: ${buttons('Lone ticket')}`, buttons('Lone ticket') === '→ folder,✕,⋯');
-check(`a folder row has + and ⋯, and no ✕ or ✎ of its own: ${buttons('Release')}`, buttons('Release') === '✕ 1 dup,+,⋯');
-check('the buttons say what they do', p.hoverButton('Child page', '✕').title === 'Close tab (middle click)' && p.hoverButton('Child page', '⋯').title === 'More actions (right click)');
-p.hoverButton('Child page', '✕').click();
+check(`a tab row has ✕ and ⋯ on hover: ${buttons('Child page')}`, buttons('Child page') === 'Close tab,More actions');
+check(`a top-level ticket also has → folder: ${buttons('Lone ticket')}`, buttons('Lone ticket') === 'Put PROJ-9 into a new folder,Close tab,More actions');
+check(`a folder row has + and ⋯, and no ✕ of its own: ${buttons('Release')}`, buttons('Release') === 'Close 1 duplicate,New folder inside,More actions');
+check('the buttons say what they do', p.hoverButton('Child page', 'Close tab').title === 'Close tab (middle click)' && p.hoverButton('Child page', 'More actions').title === 'More actions (right click)');
+check('a tab row can be grabbed by its handle, a top-level ticket by the row', !!p.row('Child page').querySelector('.acts .grip') && !p.row('Lone ticket').querySelector('.grip'));
+check(`the duplicates button: «${p.hoverButton('Release', 'Close 1 duplicate').textContent}»`, p.hoverButton('Release', 'Close 1 duplicate').textContent === '1 dup');
+p.hoverButton('Child page', 'Close tab').click();
 check('✕ closes the tab without opening it', p.removed.join() === '6' && !p.activated.includes(6));
 
 p.more('Loose page');
+check('the row keeps its buttons while its menu is open', p.row('Loose page').classList.contains('menu-open') && p.hoverButton('Loose page', 'More actions').getAttribute('aria-expanded') === 'true');
 check(`⋯ on a tab with a tab under it: ${menu()}`, menu()?.join() === 'Close tab,Close 2 tabs,Put into a new folder,Copy link,Copy links as Markdown,Reload 2 tabs,Unload 2 tabs');
 check('hints', p.hint('Close tab') === 'Middle click' && p.hint('Close 2 tabs') === 'This tab and everything under it');
 check('separators between the groups', p.$('.menu').querySelectorAll('.msep').length === 3);
 pick('Unload 2 tabs');
-check('Unload leaves the tab in view alone, and the menu closes', p.discarded.join() === '6' && menu() === null);
+check('Unload leaves the tab in view alone, and the menu closes', p.discarded.join() === '6' && menu() === null && !p.$('.row.menu-open'));
 rightClick('Loose page');
 pick('Reload 2 tabs');
 check('Reload reloads the whole branch', p.reloaded.join() === '5,6');
@@ -120,7 +123,8 @@ check('its Close closes the selection without asking again', last().type === 'cl
 p.click('Loose page', { ctrlKey: true });
 p.click('Initiative', { ctrlKey: true });
 rightClick('Epic');
-check(`right click outside the selection: that row's menu, and the selection is dropped`, menu()?.[0] === 'Close tab' && p.selected().length === 0);
+check(`right click outside the selection: that row's menu, and the selection is dropped`, menu()?.[0] === 'Close tab' && p.selected().length === 0
+  && p.row('Epic').classList.contains('menu-open'));
 p.key('Escape');
 
 foldersAppear = true;

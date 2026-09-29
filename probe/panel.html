@@ -5,28 +5,42 @@
   <title>TabTrees Probe</title>
   <link rel="stylesheet" href="panel.css">
 </head>
-<body>
-  <header>
-    <input id="q" type="search" placeholder="Search: words, ticket number, mr, jira…  ( / )" autocomplete="off" spellcheck="false">
-    <nav id="views">
-      <button data-view="tree">Tree</button>
-      <button data-view="log">Log</button>
-      <button data-view="settings">Settings</button>
-      <button id="new-folder" class="act" title="New folder on the top level">+ Folder</button>
-    </nav>
+<body data-view="tree">
+  <img class="wall" id="wall" alt="" hidden>
+  <div class="scrim" id="scrim" hidden></div>
+  <header class="hdr" id="hdr">
+    <label class="search" data-icon="search">
+      <input id="q" type="search" placeholder="Search tabs, PROJ-123, mr, jira…" aria-label="Search tabs" autocomplete="off" spellcheck="false">
+      <kbd class="k" title="Press / to search">/</kbd>
+      <button class="ab" id="q-clear" data-icon="close" aria-label="Clear the search" title="Clear the search (Esc)" hidden></button>
+    </label>
+    <button class="ib" id="new-folder" data-icon="newFolder" aria-label="New folder" title="New folder on the top level"></button>
+    <button class="ib" id="open-log" data-icon="log" aria-label="Log" title="Log and report"></button>
+    <button class="ib" id="open-settings" data-icon="settings" aria-label="Settings" title="Settings"></button>
   </header>
-  <div id="pinned" hidden></div>
-  <main id="list"></main>
-  <div id="selbar" hidden>
-    <span id="sel-count"></span>
-    <button id="sel-folder" title="Put the selection into a new folder">→ Folder</button>
-    <button id="sel-close" title="Close the selected tabs and folders (Delete)">Close</button>
-    <button id="sel-clear" title="Clear the selection (Esc)">✕</button>
+  <header class="vbar" id="vbar" hidden>
+    <button class="ib" id="back" data-icon="back" aria-label="Back to the tree" title="Back to the tree (Esc)"></button>
+    <h2 id="view-title"></h2>
+    <button class="btn primary sm" id="report" data-icon="copy" title="Copy the report, to paste into a session">Copy report</button>
+  </header>
+  <nav class="pinned" id="pinned" aria-label="Pinned tabs" hidden></nav>
+  <div class="rule"></div>
+  <main class="list" id="list"></main>
+  <div class="selbar" id="selbar" role="toolbar" aria-label="Selection" hidden>
+    <span class="n" id="sel-count"></span>
+    <span class="what" id="sel-what"></span>
+    <button class="btn" id="sel-folder" data-icon="toFolder" title="Put the selection into a new folder">Folder</button>
+    <button class="btn" id="sel-close" data-icon="closeTabs" title="Close the selected tabs and folders (Delete)">Close</button>
+    <button class="btn sm" id="sel-cancel" title="Keep them (Esc)" hidden>Cancel</button>
+    <button class="ib" id="sel-clear" data-icon="close" aria-label="Clear the selection" title="Clear the selection (Esc)"></button>
+    <span class="timer" hidden></span>
   </div>
-  <footer>
-    <span id="stats"></span>
-    <button id="report">Copy report</button>
+  <div id="toasts" aria-live="polite"></div>
+  <footer class="status">
+    <span class="grow" id="stats"></span>
+    <button class="isl-state" id="islands" hidden></button>
   </footer>
+  <input type="file" id="wp-input" accept="image/*" hidden>
   <script type="module" src="panel.js"></script>
 </body>
 </html>

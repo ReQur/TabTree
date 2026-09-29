@@ -1,7 +1,8 @@
 // Loads probe/panel.js into jsdom with a fake chrome API: the given tabs and stored tree, and recorders for
 // what the panel does: messages to the background, tabs opened, closed, reloaded or unloaded, text copied,
-// settings written. Rows are 20px tall for drag and drop: y < 6 is the upper edge ("before"), y > 14 the
-// lower edge ("after"), anything between is "inside".
+// settings and the wallpaper written or removed, drag images set. Rows are 20px tall for drag and drop:
+// y < 6 is the upper edge ("before"), y > 14 the lower edge ("after"), anything between is "inside".
+// Icon-only buttons are found by their aria-label.
 import { JSDOM } from 'jsdom';
 import fs from 'node:fs';
 import { wait } from './check.js';
@@ -19,6 +20,7 @@ export async function loadPanel({ tabs, store, onMessage = () => {} }) {
   const discarded = [];
   const copied = [];
   const sets = [];
+  const dragImages = [];
   const storageListeners = [];
   const notify = changed => {
     for (const l of storageListeners) l({ [changed]: {} }, 'local');
@@ -53,6 +55,12 @@ export async function loadPanel({ tabs, store, onMessage = () => {} }) {
           Object.assign(store, structuredClone(items));
           for (const k of Object.keys(items)) notify(k);
         },
+        remove: async keys => {
+          for (const k of [].concat(keys)) {
+            delete store[k];
+            notify(k);
+          }
+        },
       },
       session: { get: async () => ({}) },
       onChanged: { addListener: fn => storageListeners.push(fn) },
@@ -74,7 +82,7 @@ export async function loadPanel({ tabs, store, onMessage = () => {} }) {
   const selected = () => rows().filter(r => r.classList.contains('selected')).map(r => r.querySelector('.title').textContent);
   const fire = (target, type, y = 10) => {
     const e = new w.Event(type, { bubbles: true, cancelable: true });
-    e.dataTransfer = { setData() {}, effectAllowed: '' };
+    e.dataTransfer = { setData() {}, setDragImage: img => dragImages.push(img.cloneNode(true)), effectAllowed: '' };
     e.clientY = y;
     target.dispatchEvent(e);
     return e;
@@ -98,13 +106,16 @@ export async function loadPanel({ tabs, store, onMessage = () => {} }) {
     (typeof target === 'string' ? row(target) : target).dispatchEvent(e);
     return e;
   };
-  const more = text => [...row(text).querySelectorAll('button')].find(b => b.textContent === '⋯').click();
+  // A button's name: its aria-label, else its text.
+  const label = b => b.getAttribute('aria-label') ?? b.textContent;
+  const buttons = text => [...row(text).querySelectorAll('button')].map(label);
+  const hoverButton = (text, name) => [...row(text).querySelectorAll('button')].find(b => label(b) === name);
+  const more = text => hoverButton(text, 'More actions').click();
   const pick = label => {
     const item = [...menuEl().querySelectorAll('.mi')].find(b => b.querySelector('.label').textContent === label);
     if (!item) throw new Error(`no menu item «${label}» in ${JSON.stringify(menu())}`);
     item.click();
   };
-  const hoverButton = (text, label) => [...row(text).querySelectorAll('button')].find(b => b.textContent === label);
   const mousedown = target => target.dispatchEvent(new w.MouseEvent('mousedown', { bubbles: true }));
   const search = q => {
     $('#q').value = q;
@@ -113,6 +124,6 @@ export async function loadPanel({ tabs, store, onMessage = () => {} }) {
 
   return {
     w, $, rows, row, click, selected, fire, drag, key, sent, activated, removed, reloaded, discarded, copied, sets, store,
-    menu, hint, rightClick, more, pick, hoverButton, mousedown, search, last: () => sent.at(-1),
+    dragImages, menu, hint, rightClick, more, pick, buttons, hoverButton, mousedown, search, last: () => sent.at(-1),
   };
 }

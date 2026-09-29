@@ -19,6 +19,8 @@ An Opera extension that shows your tabs as a tree in the sidebar, the way an IDE
   Markdown, recolor or delete a folder.
 - **Search** by words, ticket number or page kind (`/` to focus); each result shows where its tab sits in the tree.
 - **Duplicates** of an already open URL are marked and can be closed in one click.
+- **Light and dark**, following Opera, and optionally a picture of yours behind the tree, dimmed and blurred to
+  taste, with the accent color taken from it.
 - **Survives restarts:** the tree is saved as it changes and matched back to the restored tabs by URL.
 
 The full list is in [docs/FEATURES.md](docs/FEATURES.md).

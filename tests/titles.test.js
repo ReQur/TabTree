@@ -1,6 +1,6 @@
 // Ticket keys, title cleanup and row labels (probe/titles.js).
 import { check, done } from './helpers/check.js';
-import { ticketKey, cleanTitle, kindLabel, rowLabel, groupTitle, islandName, colorFor } from '../probe/titles.js';
+import { ticketKey, cleanTitle, kindLabel, pageKind, rowLabel, groupTitle, islandName, colorFor } from '../probe/titles.js';
 
 const J = 'https://jira.example.com/browse/';
 const G = 'https://gitlab.example.com/group/app/-/merge_requests/';
@@ -23,11 +23,16 @@ check('page kinds', kindLabel(G + '42') === 'MR !42' && kindLabel(G + '42/diffs'
   && kindLabel('https://gitlab.example.com/group/app/-/jobs/31') === 'job #31'
   && kindLabel('https://ci.example.com/job/nightly/128/') === 'build #128'
   && kindLabel(J + 'PROJ-7') === 'Jira');
+const changes = pageKind(G + '42/diffs');
+check('a page kind comes in parts, for the icon and the number', changes.type === 'mr' && changes.number === '!42' && changes.view === 'changes'
+  && pageKind('https://ci.example.com/job/nightly/128/').type === 'build' && pageKind('https://example.com/') === null);
 
 const header = groupTitle([mr, jira], 'PROJ-7');
 check('a ticket is titled by its Jira page', header === 'Rate limiter for the public API');
 const label = rowLabel(mr, 'PROJ-7', header);
-check('a ticket page repeating the ticket title shows its kind', label.text === 'MR !42' && label.draft);
+check('a ticket page repeating the ticket title shows its kind', label.text === 'MR !42' && label.asKind && label.kind === null && label.draft);
+const own = rowLabel({ title: 'PROJ-7: Other work (!43) · Merge requests · group / app · GitLab', url: G + '43' }, 'PROJ-7', header);
+check('a ticket page with a title of its own keeps it, with the kind beside it', own.text === 'Other work' && !own.asKind && own.kind.number === '!43');
 check('outside a ticket the Jira kind is left to the favicon', rowLabel(jira, 'PROJ-7', null).kind === null);
 
 check('island names are shortened', islandName('PROJ-7', 'A very long summary that keeps going and going forever') === 'PROJ-7 A very long summary that keeps going and…');

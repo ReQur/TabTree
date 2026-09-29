@@ -10,8 +10,8 @@ It is the repo owner's personal project (GitHub: ReQur), used daily in Opera on 
 Read before changing anything:
 - [docs/FEATURES.md](docs/FEATURES.md): every behavior, from the user's side. Keep it true when behavior changes.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): stored data, commands, algorithms, verified Opera facts, tests.
-- [docs/UI.md](docs/UI.md): the panel's UI with every state and token, what is weak in it, and the brief for a
-  redesign.
+- [docs/UI.md](docs/UI.md): the panel's UI as built: tokens, parts and their states, the wallpaper mode, what is
+  still weak, and the hooks the tests use.
 
 ## Ground rules
 
@@ -40,7 +40,9 @@ probe/                 the extension, loaded unpacked as it is
   titles.js            ticket keys, title cleanup, page kinds, row labels, names/colors for tickets (pure)
   snapshot.js          the snapshot and matching restored tabs back to it (pure)
   panel.html/.css/.js  the sidebar UI: draws the tree, sends commands, never writes the tree itself
-  icons/               PNG icons
+  icons.js             the panel's SVG icons and icon(name)
+  wallpaper.js         the wallpaper's scrim and accent colors from a sample of its pixels (pure)
+  icons/               PNG icons of the extension
 tests/                 scenario tests on fakes (jsdom, a fake Opera); helpers in tests/helpers/
 docs/                  see above
 ```
@@ -57,7 +59,7 @@ docs/                  see above
 - Invariants (the reasons are in ARCHITECTURE.md):
   - Every change to the tree is a background command: `place`, `newFolder`, `renameFolder`, `colorFolder`,
     `deleteFolder`, `closeItems`, `allowAutoFolder`. The panel redraws from storage. It writes only `settings`
-    itself.
+    and `wallpaper` itself; the wallpaper has a key of its own, so that its sliders reload no tree.
   - Tab ids change with every browser session. Anything keyed by a tab id must go through the snapshot to survive a
     restart.
   - Islands are output only. Each top-level folder with 2+ tabs is an island; every other tab is kept out of

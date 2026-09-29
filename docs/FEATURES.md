@@ -19,14 +19,20 @@ Until it is dismissed, the **setup guide** above the tree lists steps 2–4; see
 
 Top to bottom:
 
-- **Search field** (`/` focuses it).
-- **Tree | Log | Settings** switch and **+ Folder**.
-- **Pinned tabs**: a row of favicon buttons.
+- **Header**: the search field (`/` focuses it, **✕** in it clears it) and three icon buttons: **New folder**,
+  **Log** and **Settings**.
+- **Pinned tabs**: a row of favicon tiles.
 - **The list**: the tree of folders and tabs, with the setup guide above it until it is dismissed.
-- **Selection bar**, only while rows are selected: `N selected: …`, **→ Folder**, **Close**, **✕**.
-- **Footer**: counters (`32 tabs · 5 folders · 12 tickets`) and **Copy report**.
+- **Selection bar**, floating above the status bar while rows are selected: `3 selected`, what that is
+  (`4 tabs, 1 folder`), **Folder**, **Close** and **✕**.
+- **Status bar**: counters (`22 tabs · 4 folders · 4 tickets · +2 in Personal`), then **Islands** with a square in
+  the color of each island. A click on Islands opens Settings.
 
-The panel shows the current window and the Opera workspace in use.
+**Log** and **Settings** take the place of the header and the list, under a bar of their own: **←** or Esc goes
+back to the tree. Short messages show above the status bar for a moment (see Messages).
+
+The panel shows the current window and the Opera workspace in use. It follows Opera's light or dark theme, and can
+show a picture of yours behind the tree (Settings › Background).
 
 ## Where a tab goes in the tree
 
@@ -61,36 +67,45 @@ count, so a board URL with `?selectedIssue=PROJ-1` is not that ticket's page. Lo
 
 ## What a row shows
 
-- **Favicon.** If there is none, or it fails to load, the first letter of the host is shown instead.
+- **Favicon.** If there is none, or it fails to load, the first letter of the host is shown instead. A folder row
+  has a folder glyph in the folder's color in its place.
 - **Ticket key** in accent color, only on a ticket's root row.
 - **Cleaned title.** The site tail is cut: `- Jira`, `· Merge requests · group / project · GitLab`,
   `- Dashboards - Grafana`, `- Jenkins`, `[Jenkins]`. The key is cut on key rows. `Draft:` / `WIP:` becomes a
   **draft** badge.
-- **Page-kind badge:** `MR !42`, `MR !42 · changes|commits|pipelines`, `pipeline #900`, `job #31`, `build #128`.
-  Under a ticket, a page whose title only repeats the ticket's shows just its kind (for example, a row reading
-  `MR !42`).
-- **Other badges:** **dup** on an extra copy of an already open URL, **♪** on a tab playing sound.
+- **Page kind**, as an icon and the number: the merge request icon with `!42` (`!42 · changes`, `· commits` or
+  `· pipelines` for those views of it), the pipeline icon with `#900`, the job icon with `#31`, the build icon with
+  `#128`. The words (`MR !42`) are in its tooltip. Under a ticket, a page whose title only repeats the ticket's reads
+  as its kind (a row reading `MR !42`, in a quieter color).
+- **Other badges:** **dup** on an extra copy of an already open URL, a sound icon on a tab playing sound.
 - **States:**
-  - the active tab is highlighted;
-  - tabs Opera unloaded from memory are dimmed;
+  - the active tab is filled, with an accent mark at its left edge and its title in semibold;
+  - selected rows are tinted in the accent color, and neighbouring selected rows join into one block; the active
+    tab keeps its mark when selected;
+  - tabs Opera unloaded from memory have a grey favicon and a muted title;
   - hovering a row shows the full title and URL.
-- **Counts:** a collapsed tab row shows `+N` (tabs under it); a folder row shows how many tabs it holds in total.
-- **Twisty** `▾` / `▸` on rows that have children. Clicking a tab row's twisty folds it; clicking a folder row folds
-  it.
-- **On hover**, a tab row shows **✕** (close the tab) and **⋯** (its menu, see Menus); a top-level ticket also shows
-  **→ folder**. A folder row shows **+** and **⋯**.
+- **Counts**, in one pill style: a folder row shows how many tabs it holds in total; a folded tab row shows `+N`
+  (tabs under it).
+- **Twisty**, a chevron on rows that have children: it points down while the row is open. Clicking a tab row's
+  twisty folds it; clicking a folder row folds it.
+- **Guides**: a hairline under each ancestor's twisty, so deep branches can be followed.
+- **Islands**: a top-level folder that Opera shows as an island has a rail in its color down its rows, from its own
+  row to the island's last one, and its count is tinted in that color.
+- **On hover**, and while the row's menu is open, the row's buttons take the count's place: a tab row shows **✕**
+  (close the tab), **⋯** (its menu, see Menus) and a drag handle; a top-level ticket shows **→ folder**, **✕** and
+  **⋯**. A folder row shows **+**, **⋯** and a drag handle.
 
 ## Folders
 
-- **+ Folder** in the header adds a folder on the top level, after the other top-level folders, and opens its name
-  for editing.
+- **New folder** (the folder icon in the header) adds a folder on the top level, after the other top-level folders,
+  and opens its name for editing.
 - On a folder row, when hovered: **+** adds a folder inside it (and unfolds it); **⋯** opens the folder's menu, as
   does a right click (see Menus).
 - **Renaming** (**Rename** in the menu) applies as you type and is kept when the field loses focus. Enter finishes,
-  Esc puts the old name back, and an empty name becomes `Untitled`.
+  Esc puts the old name back (both keys are shown next to the field), and an empty name becomes `Untitled`.
 - **Deleting** (**Delete folder** in the menu): what was inside moves one level up; no tab is closed.
-- **The colored square** switches to the next of nine colors: grey, blue, red, yellow, green, pink, purple, cyan,
-  orange. They are the colors Opera islands can have. The menu shows all nine to pick from.
+- **The folder glyph** (the colored folder icon) switches to the next of nine colors: grey, blue, red, yellow, green,
+  pink, purple, cyan, orange. They are the colors Opera islands can have. The menu shows all nine to pick from.
 - Folders nest to any depth, and a folder can't go under a tab. Unless the order was set by hand, folders come
   before tabs on a level.
 - **→ folder** on a top-level ticket (on hover) makes a folder named after the ticket (`PROJ-123 Summary…`), in the
@@ -119,6 +134,8 @@ everything under it. The folder is named after the ticket, colored by its key, a
 - **Every other tab is kept out of islands.** The mirror works one way: an island changed in Opera itself (tabs
   dragged in or out, a rename) is put back to match the folders.
 - Islands never span windows or workspaces. A folder with tabs in two of them gets one island in each.
+- In the panel, an island's folder has a rail in its color down its rows, and the status bar has a square in its
+  color. With the mirror off, the status bar reads `Islands off`.
 - The **Islands** switch in Settings turns the mirror off and releases the islands the extension made. Settings also
   lists every top-level folder with its island state.
 
@@ -133,10 +150,15 @@ Any tab row or folder row can be dragged. Where it lands depends on where it is 
 | middle of a row | inside it: into the folder, or under the tab, as its last child |
 | the zone shown below the list while dragging | last on the top level |
 
+- **Markers:** before or after, a line with a ring where the item will land, at the depth it will land at; inside,
+  the row is filled and outlined. The zone at the bottom turns solid while something is over it.
+- **The pointer** carries the row's favicon and title (a folder's glyph and name); dragging several rows adds their
+  count.
 - **A ticket's own page** (an MR under its ticket) can be reordered among that ticket's pages. Dropped anywhere
   else, it takes the **whole ticket** along.
 - **A selected row** drags the **whole selection**, keeping its order.
-- **Not allowed:** a folder under a tab, or anything into its own branch. The target shows no drop marker.
+- **Not allowed:** a folder under a tab, or anything into its own branch. The target shows no drop marker, and the
+  pointer shows it can't drop there.
 - Moving between folders moves the tabs between islands too.
 
 ## Selection
@@ -148,12 +170,14 @@ Any tab row or folder row can be dragged. Where it lands depends on where it is 
   just that row and makes it the anchor.
 - **A plain click** clears the selection and does the usual thing: opens the tab, or folds the folder.
 - **A click on the empty part of the list, Esc, or ✕ on the selection bar** clears the selection and the anchor.
-- **The selection bar:**
-  - it counts what is selected (`3 selected: 5 tabs, 1 folder`);
-  - **→ Folder** puts the selection into a new folder in place of its first row (on the nearest level that can hold
-    a folder) and opens the name for editing;
+- **The selection bar**, floating above the status bar:
+  - it counts what is selected (`3 selected`, then `5 tabs, 1 folder`);
+  - **Folder** puts the selection into a new folder in place of its first row (on the nearest level that can hold a
+    folder) and opens the name for editing;
   - **Close** closes every tab in the selection and removes its folders. Closing more than one tab, or any folder,
-    needs a second click within 4 seconds; the button then reads `Sure? Close …`.
+    asks first: the bar turns red and asks `Close 5 tabs and 1 folder?` with **Close** and **Cancel**, and a strip
+    along its bottom runs down over 4 seconds. **Close** then closes them; **Cancel**, Esc, or the 4 seconds
+    running out keep them, and the selection too.
 - **Delete** does the same as Close.
 - **How the selection counts:** a selected page of a ticket stands for its whole ticket, and a row inside a
   selected folder or branch counts only once.
@@ -161,8 +185,9 @@ Any tab row or folder row can be dragged. Where it lands depends on where it is 
 
 ## Menus
 
-**⋯** on a row (shown on hover) and a **right click** on the row open the same menu. It closes on Esc, a click
-elsewhere, scrolling, or once an item is used. ↑ ↓ move between its items and Enter uses one.
+**⋯** on a row (shown on hover) and a **right click** on the row open the same menu. Its items have icons; a hint
+under an item says what it takes along. It closes on Esc, a click elsewhere, scrolling, or once an item is used.
+↑ ↓ move between its items and Enter uses one. The row keeps its buttons shown while its menu is open.
 
 **A tab:**
 - **Close tab**, the same as a middle click. **Close N tabs** when tabs hang under it: the tab and everything under
@@ -178,13 +203,13 @@ elsewhere, scrolling, or once an item is used. ↑ ↓ move between its items an
 
 **A folder:**
 - **New folder inside** and **Rename**;
-- the nine colors, the folder's own one checked;
+- **Color**: the nine colors as a row of swatches, the folder's own one ringed;
 - **Close N duplicates** when the folder holds extra copies of a URL;
 - **Copy links as Markdown** when it holds tabs;
 - **Delete folder**: its tabs move one level up.
 
 **The selection** (on a selected row, with more than one row selected):
-- **Put N items into a new folder** (as **→ Folder** on the selection bar), **Move to the top level**,
+- **Put N items into a new folder** (as **Folder** on the selection bar), **Move to the top level**,
   **Copy links as Markdown**, **Reload N tabs**, **Unload N tabs**;
 - **Close …**, at once: choosing it in a menu is already deliberate, so there is no second click as on the selection
   bar.
@@ -200,30 +225,35 @@ A right click on a row outside the selection clears the selection and opens that
 - Typing filters all tabs of the window, pinned tabs and other workspaces included. It matches title, URL, ticket
   key and page kind (`mr`, `pipeline`, `jira`).
 - Every word must match; case doesn't matter. Try `2931 mr` or `dashboard latency`.
-- Above the results: how many there are, and the keys (`4 tabs · ↑ ↓ move · Enter opens · Esc clears`).
+- **✕** in the field, while it holds text, clears it.
+- Above the results: how many there are (`4 tabs`), and the keys (`↑ ↓ move · ↵ open · Esc clear`).
 - A result is the tab's row (favicon, key, cleaned title, badges) with the words found in the title marked. Under it
   is where the tab is:
   - its path in the tree, top down: folders, tickets' keys and other pages' titles
-    (`Release 2.4 › PROJ-101 › PROJ-140`), with the top-level folder's color;
+    (`Release 2.4 › PROJ-101 › PROJ-140`), after a square in the top-level folder's color;
   - or `Top level`, `Pinned`, or `Workspace Personal · opens there` for a tab of another workspace, which also
     carries the workspace's name as a badge.
-- **↑ / ↓** move the highlight, **Enter** opens the highlighted tab, **Esc** clears the search. A click opens a
-  result, a middle click closes it, and a right click opens its menu (tabs of the current workspace).
-- With nothing found, a line says what is searched.
+- **↑ / ↓** move the highlight (an accent outline), **Enter** opens the highlighted tab, **Esc** clears the search.
+  A click opens a result, a middle click closes it, and a right click opens its menu (tabs of the current
+  workspace).
+- With nothing found: `No tabs match`, what is searched, and **Clear search**.
 
 ## Closing tabs and duplicates
 
 - **Middle click** on a row, or **✕** at its right end (on hover), closes that tab.
 - **Close N tabs** in a tab's menu closes the tab with everything under it.
-- **✕ N dups** on a folder row, or **Close N duplicates** in its menu, closes the extra copies in that folder. Of
-  each URL, the copy kept is the active one, else the most recently used.
+- **N dups** (with a ✕, in warning color) on a folder row, or **Close N duplicates** in its menu, closes the extra
+  copies in that folder. Of each URL, the copy kept is the active one, else the most recently used.
 - Close on the selection bar or in the selection's menu: see Selection and Menus.
 
 ## Pinned tabs and other workspaces
 
-- Pinned tabs of the current workspace are the icon row above the tree. Click one to open it.
-- Tabs of other Opera workspaces sit in a collapsed `Workspace: <name>` group at the bottom of the tree: a flat list
-  that can't be dragged. Switching workspaces in Opera switches the panel to that workspace.
+- Pinned tabs of the current workspace are the row of tiles above the tree. Click one to open it. The active one is
+  underlined, and a dot marks one playing sound.
+- Tabs of other Opera workspaces sit under **Other workspaces** at the bottom of the tree, in a folded group per
+  workspace, named after it: a flat list that can't be dragged. Switching workspaces in Opera switches the panel to
+  that workspace.
+- A workspace with no tabs in the tree shows `No tabs in this workspace` and **New folder**.
 
 ## After a browser restart
 
@@ -240,14 +270,28 @@ matched neighbours. A tab whose parent didn't come back goes under the nearest a
 Does not survive: the folded state of tab rows (a tab's id changes on restart). The folded state of folders does
 survive.
 
+## Messages
+
+- A confirmation (`Report copied`, `Link copied`, `Links copied`) shows above the status bar for 2.5 seconds.
+- An error (`place failed: no answer`, `The clipboard refused`) stays for 8 seconds, in red, with **Copy report**.
+- A click on a message dismisses it. A new message replaces the one shown.
+
 ## Log view and report
 
-**Log** shows the report live; **Copy report** in the footer, or **Copy** in Settings › Diagnostics, copies it.
-The report contains:
+**Log** (in the header) shows the report live:
+- a summary: Opera's and Chromium's versions, the APIs (✓ available, ✗ missing), tabs, workspaces, folders,
+  placements, the snapshot, and the wallpaper when there is one;
+- **Events** or **Background changes**, newest first: each with its time and a tag for its kind (created, link,
+  place, folder, mirror, closed, restored, startup, title, favicon).
+
+**Copy report** in the Log view's bar, **Copy** in Settings › Diagnostics, or **Copy report** on an error message
+copies the report as plain text. If the clipboard refuses, the Log view shows the report selected, to copy by hand:
+Ctrl+C, then Esc. The report contains:
 - the Opera and Chromium versions;
 - the APIs available;
 - tab, workspace and folder counts;
 - the snapshot state;
+- the wallpaper: its size before and after scaling, its size in storage, and its settings;
 - the last 60 events: tab opened (with opener), link target, drop, folder made or deleted, mirror pass, restore;
 - the last 30 title and favicon changes of background tabs.
 
@@ -255,9 +299,22 @@ It is meant for debugging: paste it into a session.
 
 ## Settings
 
-**Settings** in the header switches the list to the settings; **Tree** or Esc goes back. The switches are on by
-default.
+**Settings** in the header (or **Islands** in the status bar) opens the settings; **←** or Esc goes back. The
+switches are on by default.
 
+- **Background**: **None** or **Image file**, a picture of yours behind the tree.
+  - **Image file** asks for a picture the first time, and later shows the one picked before. The picture is scaled
+    down to 1400 pixels tall and kept in the extension's storage, so it survives restarts. Nothing leaves the
+    computer.
+  - A thumbnail of the whole picture has a frame over the part behind the panel: drag it sideways, or focus it and
+    use ← →, to move the picture.
+  - **Change…** picks another picture. **Remove** deletes it; **None** only hides it.
+  - **Dim** (70% at first): how strongly a veil covers the picture, so that text stays readable. The veil is the
+    picture's darkest tone made very dark, or near white in the light theme.
+  - **Blur** (0 to 24 pixels, 0 at first).
+  - **Accent**: **Blue**, or **From wallpaper**: the picture's most frequent strong color, made readable on the veil.
+    A picture without a strong color keeps blue.
+  - Every panel (one per window) shows the same picture, and follows a change made in another one.
 - **Tree**
   - **Auto-folders**: automatic folders for ticket families.
   - **Never for**: the tickets that never get an automatic folder (their folder was deleted, or the family was taken
@@ -295,15 +352,19 @@ Until it is dismissed, a card above the tree lists what to set up in Opera, once
 | Shift+click, Ctrl+Shift+click | row | select / add a range from the anchor |
 | click | empty part of the list | clear the selection and the anchor |
 | drag | row | move (see Drag and drop) |
-| click | folder's colored square | next color |
-| hover | tab row | **✕** close, **⋯** menu |
-| hover | folder row | **+** folder inside, **⋯** menu |
-| hover | top-level ticket | **→ folder** |
+| click | folder glyph | next color |
+| hover | tab row | **✕** close, **⋯** menu, drag handle |
+| hover | folder row | **+** folder inside, **⋯** menu, drag handle |
+| hover | top-level ticket | **→ folder**, **✕**, **⋯** |
 | click | step of the setup guide | tick / untick it |
-| `/` | anywhere | focus search |
+| click | **Islands** in the status bar | open Settings |
+| click | a message | dismiss it |
+| `/` | anywhere | focus search (from Log or Settings too) |
 | ↑ ↓ Enter | search | move the highlight, open |
 | ↑ ↓ Enter | menu | move between the items, use one |
-| Esc | anywhere | close the menu, if one is open. Otherwise clear the search and the selection, and go back to the tree from Log or Settings; also closes the report's copy-by-hand box |
+| ← | Log, Settings | back to the tree |
+| drag, or ← → | the frame in Settings › Background | move the picture |
+| Esc | anywhere | close the menu, if one is open; else cancel an armed Close; otherwise clear the search and the selection, and go back to the tree from Log or Settings; also closes the report's copy-by-hand box |
 | Delete | with a selection | Close the selection (asks first when it is big) |
 
 ## Limitations and known gaps
@@ -320,3 +381,5 @@ Until it is dismissed, a card above the tree lists what to set up in Opera, once
 - **Title and favicon changes of background tabs** are only logged. The planned "changed while you weren't looking"
   marker is not built.
 - **Hover-only buttons** are easy to miss; a right click gives the same menu as **⋯**.
+- **The background picture comes from a file.** Following Opera's own start-page wallpaper needs a helper outside
+  the browser (see ARCHITECTURE.md), so it is not offered yet.

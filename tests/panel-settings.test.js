@@ -21,6 +21,12 @@ const p = await loadPanel({
     parents: { 1: 'f:rel', 2: 'f:sub', 3: 'f:solo' },
     ranks: {},
     declined: { 'PROJ-77': true, 'ABC-1': true },
+    log: [
+      { t: 1000, ev: 'created', id: 4, index: 4, opener: 3, openerHost: 'wiki.example.com', groupId: -1, host: 'example.com' },
+      { t: 2000, ev: 'place', node: 't:4', parent: 'f:rel' },
+      { t: 3000, ev: 'mirror', islands: 1, moved: 1, ungrouped: 0 },
+    ],
+    changes: [{ t: 2500, ev: 'title', id: 2, host: 'grafana.example.com' }],
   },
   // What the background does with allowAutoFolder.
   onMessage: (m, s) => {
@@ -32,30 +38,33 @@ const p = await loadPanel({
 const { $, store } = p;
 const all = sel => [...p.w.document.querySelectorAll(sel)];
 const texts = sel => all(sel).map(e => e.textContent);
-const view = name => $(`#views button[data-view="${name}"]`).click();
+const view = name => $({ settings: '#open-settings', log: '#open-log', tree: '#back' }[name]).click();
+const shown = () => p.w.document.body.dataset.view;
+// A ticked step shows a tick instead of its number.
+const nums = () => all('.steps .num').map(n => (n.querySelector('svg') ? '✓' : n.textContent)).join();
 const flip = id => {
   $(id).checked = !$(id).checked;
   $(id).dispatchEvent(new p.w.Event('change'));
 };
 
 check(`a first start shows the setup guide above the tree: ${texts('#list .card h4')}`, texts('#list .card h4').join() === 'Set up TabTree' && $('#list').firstElementChild === $('.card'));
-check(`three steps: ${texts('.steps li b')}`, texts('.steps li b').join('|') === "Pin this panel|Collapse Opera's tabs|Turn off automatic Tab Islands" && texts('.steps .num').join() === '1,2,3');
+check(`three steps: ${texts('.steps li b')}`, texts('.steps li b').join('|') === "Pin this panel|Collapse Opera's tabs|Turn off automatic Tab Islands" && nums() === '1,2,3');
 check('the tree is still there under it', !!p.row('Dashboard A'));
 $('.steps li[data-step="tabs"]').click();
 await wait(300);
-check('a step is ticked by hand and stays ticked', store.settings?.setup?.tabs === true && $('.steps li[data-step="tabs"]').classList.contains('done') && texts('.steps .num').join() === '1,✓,3');
+check('a step is ticked by hand and stays ticked', store.settings?.setup?.tabs === true && $('.steps li[data-step="tabs"]').classList.contains('done') && nums() === '1,✓,3');
 $('.steps li[data-step="tabs"]').click();
 await wait(300);
-check('and unticked', store.settings.setup.tabs === false && texts('.steps .num').join() === '1,2,3');
+check('and unticked', store.settings.setup.tabs === false && nums() === '1,2,3');
 $('.steps li[data-step="pin"]').click();
 $('.steps li[data-step="islands"]').click();
 await wait(300);
-check('two quick clicks tick both steps', store.settings.setup.pin === true && store.settings.setup.islands === true && texts('.steps .num').join() === '✓,2,✓');
+check('two quick clicks tick both steps', store.settings.setup.pin === true && store.settings.setup.islands === true && nums() === '✓,2,✓');
 [...all('.card button')].find(b => b.textContent === 'Later').click();
 check('"Later" hides the guide without remembering it', !$('.card') && store.settings.onboarded === undefined);
 
 view('settings');
-check(`Settings: ${texts('.settings h3')}`, texts('.settings h3').join() === 'Tree,Opera,Diagnostics,Setup' && $('#views button.on')?.dataset.view === 'settings' && !$('.card'));
+check(`Settings: ${texts('.settings .sub')}`, texts('.settings .sub').join() === 'Background,Tree,Opera,Diagnostics,Setup' && shown() === 'settings' && !$('.card') && $('#hdr').hidden && $('#view-title').textContent === 'Settings');
 check('both switches are on by default', $('#set-auto-folders').checked && $('#set-mirror').checked);
 check(`tickets kept out of automatic folders, sorted: ${texts('.chip')}`, texts('.chips .muted').join() === 'Never for' && all('.chip').map(c => c.dataset.key).join() === 'ABC-1,PROJ-77');
 const allow = $('.chip[data-key="PROJ-77"] button');
@@ -63,7 +72,7 @@ check('each with ✕ to allow it again', allow.title === 'Allow a folder for PRO
 allow.click();
 await wait(300);
 check('✕ sends allowAutoFolder, and the chip goes', p.last().type === 'allowAutoFolder' && p.last().key === 'PROJ-77' && all('.chip').map(c => c.dataset.key).join() === 'ABC-1');
-const islands = () => all('.islands li').map(li => `${li.querySelector('.title').textContent}: ${li.querySelector('.count').textContent}`);
+const islands = () => all('.islands .il').map(li => `${li.querySelector('.grow').textContent}: ${li.querySelector('.m').textContent}`);
 check(`the islands of the top-level folders: ${islands().join('; ')}`, islands().join('; ') === 'Release: 2 tabs · island; Solo: 1 tab · no island, Opera needs 2; Empty: 0 tabs · no island');
 flip('#set-auto-folders');
 await wait(300);
@@ -81,13 +90,30 @@ await wait(50);
 check('Report › Copy copies the report', p.copied.at(-1)?.startsWith('## TabTrees probe'));
 option('Log').querySelector('button').click();
 await wait(50);
-check('Log › Open opens the log', $('#views button.on')?.dataset.view === 'log' && !!$('pre.log'));
+check('Log › Open opens the log', shown() === 'log' && !!$('.logv .kv') && !$('#report').hidden && $('#view-title').textContent === 'Log');
+check(`the Log view sums the report up: ${texts('.kv dt')}`, texts('.kv dt').join() === 'Opera,APIs,Tabs,Workspaces,Folders,Placements,Snapshot');
+const events = () => all('.ev').map(e => `${e.querySelector('.t').textContent}: ${e.querySelector('p').textContent}`);
+check(`then the events, newest first, tagged by kind: ${events().join(' / ')}`,
+  events().join(' / ') === 'mirror: 1 island, 1 tab moved in, 0 taken out / place: t:4 under f:rel / created: #4 from #3 wiki.example.com → example.com'
+  && $('.ev .t').classList.contains('c-cyan'));
+[...all('.seg button')].find(b => b.textContent.startsWith('Background changes')).click();
+await wait(50);
+check(`Background changes: ${events()}`, events().join() === 'title: #2 grafana.example.com' && $('.seg button.on').textContent === 'Background changes1');
+const clipboard = p.w.navigator.clipboard.writeText;
+p.w.navigator.clipboard.writeText = async () => {
+  throw new Error('denied');
+};
+$('#report').click();
+await wait(50);
+p.w.navigator.clipboard.writeText = clipboard;
+check(`when the clipboard refuses, the report is shown selected: «${$('.banner')?.textContent}»`,
+  $('.banner')?.textContent === 'The clipboard refused. The report is selected: press Ctrl+C, then Esc.' && $('textarea.report')?.value.startsWith('## TabTrees probe'));
 view('settings');
 p.key('Escape');
-check('Esc goes back to the tree', $('#views button.on')?.dataset.view === 'tree' && !!p.row('Dashboard A'));
+check('Esc goes back to the tree', shown() === 'tree' && !!p.row('Dashboard A') && !$('#hdr').hidden && $('#vbar').hidden);
 view('settings');
 option('Setup guide').querySelector('button').click();
-check('Setup guide › Show brings the guide back, above the tree', $('#views button.on')?.dataset.view === 'tree' && !!$('#list .card'));
+check('Setup guide › Show brings the guide back, above the tree', shown() === 'tree' && !!$('#list .card'));
 await wait(300);
 check('and forgets that it was dismissed', store.settings.onboarded === false);
 [...all('.card button')].find(b => b.textContent === 'Got it').click();

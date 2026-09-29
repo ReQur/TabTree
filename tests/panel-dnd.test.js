@@ -29,11 +29,26 @@ const p = await loadPanel({
     return 'folders';
   },
 });
-const text = r => [...r.children].map(c => (c.tagName === 'BUTTON' ? '' : c.textContent)).filter(Boolean).join(' | ');
-console.log(p.rows().map(r => `${r.style.paddingLeft.padStart(4)} ${text(r)}`).join('\n'));
+const text = r => [...r.children].map(c => (c.classList.contains('acts') ? '' : c.textContent)).filter(Boolean).join(' | ');
+const depth = r => r.style.getPropertyValue('--d');
+console.log(p.rows().map(r => `${depth(r)} ${'  '.repeat(depth(r))}${text(r)}`).join('\n'));
 
-check('folders nest, tickets hang under tickets', p.row('Dashboards').style.paddingLeft === '18px' && p.row('Epic').style.paddingLeft === '32px');
+check('folders nest, tickets hang under tickets', depth(p.row('Dashboards')) === '1' && depth(p.row('Epic')) === '2');
+check("a top-level folder with 2+ tabs is an island: a rail in its color, from its row to the island's last row",
+  p.row('Release').classList.contains('head') && p.rows().filter(r => r.classList.contains('isl')).length === 8
+  && p.rows().filter(r => r.classList.contains('c-blue') && r.classList.contains('isl')).length === 8
+  && p.row('Second MR').classList.contains('end') && !p.row('Lone ticket').classList.contains('isl'));
+const kind = p.row('First MR').querySelector('.kind');
+check(`a page kind is an icon and the number, the words in its tooltip: «${kind?.textContent}»`, kind?.textContent === '!5' && kind.title === 'MR !5' && !!kind.querySelector('svg'));
 
+p.fire(p.row('Dashboard B'), 'dragstart');
+p.fire(p.row('Dashboard A'), 'dragover', 2);
+check('upper edge: a line before the row, at its depth', !!p.row('Dashboard A').querySelector('.dl.before') && p.row('Dashboard A').classList.contains('drop-before'));
+p.fire(p.row('Dashboard A'), 'dragover', 10);
+check('middle: the row itself is marked', !p.$('.dl') && p.row('Dashboard A').classList.contains('drop-inside'));
+p.fire(p.row('Dashboard B'), 'dragend');
+check(`the drag image: favicon and title: «${p.dragImages.at(-1)?.textContent}»`, p.dragImages.at(-1)?.textContent === 'GDashboard B' && !p.dragImages.at(-1).querySelector('.count'));
+await wait(150);
 p.drag('Dashboard B', 'Dashboard A', 2);
 check('upper edge: before, on the same level', p.last().nodes.join() === 't:6' && p.last().parent === 'f:dash' && p.last().order.join() === 't:6,t:5');
 await wait(150);
@@ -72,8 +87,8 @@ await wait(300);
 
 p.row('Release').querySelector('.dot').click();
 await wait(50);
-check('the color square switches to the next color', p.last().type === 'colorFolder' && p.last().color === 'red');
-[...p.row('Lone ticket').querySelectorAll('button')].find(b => b.textContent === '→ folder').click();
+check('the folder glyph switches to the next color', p.last().type === 'colorFolder' && p.last().color === 'red');
+p.hoverButton('Lone ticket', 'Put PROJ-9 into a new folder').click();
 await wait(50);
 check('"→ folder" puts a top-level ticket into a folder in its place', p.last().type === 'newFolder' && p.last().items.join() === 't:7' && p.last().order.includes(`f:${p.last().id}`) && !p.last().order.includes('t:7'));
 p.more('Dashboards');

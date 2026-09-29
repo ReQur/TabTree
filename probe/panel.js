@@ -1,12 +1,17 @@
 import { ticketKey, cleanTitle, rowLabel, kindLabel, hostOf, urlKey, islandName, colorFor } from './titles.js';
 import { buildTree, tabIdsUnder, nodeRef, folderRef } from './tree.js';
+import { icon } from './icons.js';
+import { tonesOf, wallTokens } from './wallpaper.js';
 
 const $ = sel => document.querySelector(sel);
 const listEl = $('#list');
 const pinnedEl = $('#pinned');
 const statsEl = $('#stats');
+const islandsEl = $('#islands');
 const qEl = $('#q');
 const selBar = $('#selbar');
+
+for (const e of document.querySelectorAll('[data-icon]')) e.prepend(icon(e.dataset.icon));
 
 // Per-viewer UI conveniences only; losing them is harmless.
 const prefs = {
@@ -25,12 +30,8 @@ const prefs = {
   },
 };
 
-// Chromium tab group colors, which folders share with the islands that mirror them.
-const GROUP_COLORS = {
-  grey: '#9aa0a6', blue: '#8ab4f8', red: '#f28b82', yellow: '#fdd663', green: '#81c995',
-  pink: '#ff8bcb', purple: '#c58af9', cyan: '#78d9ec', orange: '#fcad70',
-};
-const COLORS = Object.keys(GROUP_COLORS);
+// Chromium tab group colors, which folders share with the islands that mirror them (`.c-<color>` in panel.css).
+const COLORS = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'];
 
 const SETUP_STEPS = [
   ['pin', 'Pin this panel', "The pin in the panel's title bar keeps it next to the page."],
@@ -114,7 +115,7 @@ function findDuplicates(list) {
 // Every change to the tree is made by the background, which also keeps the islands in step.
 async function send(msg) {
   const res = await chrome.runtime.sendMessage(msg).catch(e => ({ error: e.message }));
-  if (!res?.ok) flash(`${msg.type} failed: ${res?.error ?? 'no answer'}`);
+  if (!res?.ok) toast(`${msg.type} failed: ${res?.error ?? 'no answer'}`, { error: true });
   return res;
 }
 
@@ -186,9 +187,29 @@ function unload(ids) {
   }
 }
 
-function copyText(text, done) {
-  const writing = navigator.clipboard?.writeText(text) ?? Promise.reject(new Error('no clipboard'));
-  writing.then(() => flash(done), () => flash('The clipboard refused'));
+// The clipboard API, and failing that the old execCommand, which still works where the API refuses (in a panel
+// that doesn't have the focus, for one).
+async function writeClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {}
+  const box = el('textarea', 'offscreen');
+  box.value = text;
+  document.body.append(box);
+  box.focus();
+  box.select();
+  let copied = false;
+  try {
+    copied = document.execCommand('copy');
+  } catch {}
+  box.remove();
+  return copied;
+}
+
+async function copyText(text, done) {
+  if (await writeClipboard(text)) toast(done);
+  else toast('The clipboard refused', { error: true });
 }
 
 // Branches as a nested Markdown list, to paste into a ticket or notes.
@@ -259,6 +280,7 @@ listEl.addEventListener('click', e => {
 function clearSelection() {
   if (!selection.size) return;
   selection.clear();
+  disarm();
   render();
 }
 
@@ -276,10 +298,11 @@ function selectedNodes() {
 
 const foldersUnder = n => [...(n.folder ? [n.folder.id] : []), ...n.children.flatMap(foldersUnder)];
 
-function describe(nodes) {
+// "5 tabs, 1 folder"; the confirming question joins them with "and".
+function describe(nodes, joiner = ', ') {
   const tabCount = new Set(nodes.flatMap(tabIdsUnder)).size;
   const folderCount = nodes.flatMap(foldersUnder).length;
-  return [tabCount && plural(tabCount, 'tab'), folderCount && plural(folderCount, 'folder')].filter(Boolean).join(', ');
+  return [tabCount && plural(tabCount, 'tab'), folderCount && plural(folderCount, 'folder')].filter(Boolean).join(joiner);
 }
 
 function closeSelection() {
@@ -287,6 +310,7 @@ function closeSelection() {
   send({ type: 'closeItems', tabIds: [...new Set(nodes.flatMap(tabIdsUnder))], folderIds: nodes.flatMap(foldersUnder) });
   selection.clear();
   anchor = null;
+  disarm();
   render();
 }
 
@@ -298,18 +322,40 @@ function selectionToFolder() {
   render();
 }
 
+// The bar floats above the status bar while rows are selected. Armed, it asks before closing: the question,
+// Close and Cancel, and a strip that runs down over the seconds left.
 function renderSelBar() {
   const nodes = selectedNodes();
   selBar.hidden = !nodes.length || view !== 'tree';
-  if (selBar.hidden) return;
-  const what = describe(nodes);
-  $('#sel-count').textContent = `${selection.size} selected: ${what || 'nothing'}`;
-  $('#sel-close').textContent = armed ? `Sure? Close ${what}` : 'Close';
-  $('#sel-close').classList.toggle('armed', !!armed);
+  document.body.classList.toggle('selecting', !selBar.hidden);
+  if (selBar.hidden) {
+    disarm();
+    return;
+  }
+  const on = !!armed;
+  selBar.classList.toggle('armed', on);
+  selBar.setAttribute('role', on ? 'alertdialog' : 'toolbar');
+  selBar.setAttribute('aria-label', on ? 'Confirm closing' : 'Selection');
+  $('#sel-count').textContent = `${selection.size} selected`;
+  $('#sel-what').textContent = on ? `Close ${describe(nodes, ' and ')}?` : describe(nodes) || 'nothing';
+  $('#sel-what').title = $('#sel-what').textContent;
+  $('#sel-close').classList.toggle('danger', on);
+  $('#sel-close').classList.toggle('sm', on);
+  for (const id of ['#sel-count', '#sel-folder', '#sel-clear']) $(id).hidden = on;
+  $('#sel-cancel').hidden = !on;
+  selBar.querySelector('.timer').hidden = !on;
+}
+
+function disarm() {
+  if (!armed) return;
+  clearTimeout(armed);
+  armed = 0;
+  renderSelBar();
 }
 
 $('#sel-folder').onclick = selectionToFolder;
 $('#sel-clear').onclick = forgetSelection;
+$('#sel-cancel').onclick = disarm;
 // Closing one tab needs no confirmation; anything bigger takes a second click within a few seconds.
 $('#sel-close').onclick = () => {
   const nodes = selectedNodes();
@@ -322,8 +368,6 @@ $('#sel-close').onclick = () => {
     renderSelBar();
     return;
   }
-  clearTimeout(armed);
-  armed = 0;
   closeSelection();
 };
 
@@ -337,10 +381,18 @@ menuEl.setAttribute('role', 'menu');
 menuEl.hidden = true;
 document.body.append(menuEl);
 
-// Items are { label, hint, danger, run }, { colors: current, run(color) }, or '-' between groups; falsy
-// items are left out. `at` is where to open: a point, or the right edge of the ⋯ button (alignRight).
-function openMenu(items, at) {
+let menuRow = null; // the row whose menu is open: it keeps its actions shown
+
+// Items are { label, icon, hint, key, danger, run } (hint: a line under the label; key: a shortcut on the
+// right), { colors: current, run(color) }, or '-' between groups; falsy items are left out. `at` is where to
+// open: a point, or the right edge of the ⋯ button (alignRight). The row of `ref` keeps its buttons shown
+// meanwhile; it is looked up here, because making the items may have redrawn the list.
+function openMenu(items, at, ref = null) {
   paused = true;
+  menuRow?.classList.remove('menu-open');
+  menuRow = ref && listEl.querySelector(`.row[data-ref="${ref}"]`);
+  menuRow?.classList.add('menu-open');
+  menuRow?.querySelector('.more')?.setAttribute('aria-expanded', 'true');
   menuEl.replaceChildren();
   let gap = false;
   for (const item of items.filter(Boolean)) {
@@ -368,15 +420,21 @@ function openMenu(items, at) {
 function closeMenu() {
   if (menuEl.hidden) return;
   menuEl.hidden = true;
+  menuRow?.classList.remove('menu-open');
+  menuRow?.querySelector('.more')?.removeAttribute('aria-expanded');
+  menuRow = null;
   paused = false;
   if (missed) refresh();
 }
 
-function menuItem({ label, hint, danger, run }) {
-  const b = el('button', danger ? 'mi danger' : 'mi');
+function menuItem({ label, icon: name, hint, key, danger, run }) {
+  const b = el('button', ['mi', hint && 'tall', danger && 'danger'].filter(Boolean).join(' '));
   b.setAttribute('role', 'menuitem');
-  b.append(el('span', 'label', label));
-  if (hint) b.append(el('small', 'hint', hint));
+  const words = el('span', 'words');
+  words.append(el('span', 'label', label));
+  if (hint) words.append(el('small', 'hint', hint));
+  b.append(name ? icon(name) : el('span', 'i'), words);
+  if (key) b.append(el('small', 'hint sc', key));
   b.onclick = () => {
     closeMenu();
     run();
@@ -384,14 +442,17 @@ function menuItem({ label, hint, danger, run }) {
   return b;
 }
 
+// The nine colors under a "Color" label; the folder's own one is ringed.
 function swatches({ colors: current, run }) {
+  const label = el('div', 'mlabel');
+  label.append(icon('color'), 'Color');
   const box = el('div', 'swatches');
   box.setAttribute('role', 'radiogroup');
   box.setAttribute('aria-label', 'Folder color');
   for (const color of COLORS) {
-    const b = el('button', color === current ? 'sw on' : 'sw');
-    b.style.background = GROUP_COLORS[color];
+    const b = el('button', `sw c-${color}${color === current ? ' on' : ''}`);
     b.title = color[0].toUpperCase() + color.slice(1);
+    b.setAttribute('aria-label', b.title);
     b.dataset.color = color;
     b.setAttribute('role', 'radio');
     b.setAttribute('aria-checked', String(color === current));
@@ -401,7 +462,9 @@ function swatches({ colors: current, run }) {
     };
     box.append(b);
   }
-  return box;
+  const both = document.createDocumentFragment();
+  both.append(label, box);
+  return both;
 }
 
 // Right-clicking a row outside the selection works on that row alone, as in a file manager.
@@ -421,19 +484,26 @@ function folderMenu(node) {
   const ids = tabIdsUnder(node);
   const dups = ids.filter(id => dupIds.has(id));
   return [
-    { label: 'New folder inside', run: () => addFolder(node) },
+    { label: 'New folder inside', icon: 'newFolder', run: () => addFolder(node) },
     {
       label: 'Rename',
+      icon: 'rename',
       run: () => {
         pendingRename = f.id;
         render();
       },
     },
     { colors: f.color, run: color => send({ type: 'colorFolder', id: f.id, color }) },
-    dups.length > 0 && { label: `Close ${plural(dups.length, 'duplicate')}`, run: () => chrome.tabs.remove(dups) },
-    ids.length > 0 && { label: 'Copy links as Markdown', run: () => copyText(markdownOf([node]), 'Links copied') },
+    dups.length > 0 && { label: `Close ${plural(dups.length, 'duplicate')}`, icon: 'copy', run: () => chrome.tabs.remove(dups) },
+    ids.length > 0 && { label: 'Copy links as Markdown', icon: 'copy', run: () => copyText(markdownOf([node]), 'Links copied') },
     '-',
-    { label: 'Delete folder', hint: 'Its tabs move one level up', danger: true, run: () => send({ type: 'deleteFolder', id: f.id }) },
+    {
+      label: 'Delete folder',
+      icon: 'delete',
+      hint: 'Its tabs move one level up',
+      danger: true,
+      run: () => send({ type: 'deleteFolder', id: f.id }),
+    },
   ];
 }
 
@@ -444,14 +514,19 @@ function tabMenu(node) {
   // A ticket's own page moves with its ticket, as it does when dragged.
   const unit = node.groupKey ? node.parent : node;
   return [
-    { label: 'Close tab', hint: 'Middle click', run: () => chrome.tabs.remove(t.id) },
-    many && { label: `Close ${branch.length} tabs`, hint: 'This tab and everything under it', run: () => chrome.tabs.remove(branch) },
+    { label: 'Close tab', icon: 'close', key: 'Middle click', run: () => chrome.tabs.remove(t.id) },
+    many && {
+      label: `Close ${branch.length} tabs`,
+      icon: 'closeTabs',
+      hint: 'This tab and everything under it',
+      run: () => chrome.tabs.remove(branch),
+    },
     '-',
-    { label: 'Put into a new folder', run: () => nodesToFolder([unit], unit.ticket ? ticketFolder(unit) : {}) },
-    !unit.parent?.root && { label: 'Move to the top level', run: () => moveToTop([unit]) },
+    { label: 'Put into a new folder', icon: 'toFolder', run: () => nodesToFolder([unit], unit.ticket ? ticketFolder(unit) : {}) },
+    !unit.parent?.root && { label: 'Move to the top level', icon: 'dropZone', run: () => moveToTop([unit]) },
     '-',
-    { label: 'Copy link', run: () => copyText(t.url, 'Link copied') },
-    many && { label: 'Copy links as Markdown', run: () => copyText(markdownOf([node]), 'Links copied') },
+    { label: 'Copy link', icon: 'copy', run: () => copyText(t.url, 'Link copied') },
+    many && { label: 'Copy links as Markdown', icon: 'copy', run: () => copyText(markdownOf([node]), 'Links copied') },
     '-',
     { label: many ? `Reload ${branch.length} tabs` : 'Reload', run: () => reload(branch) },
     { label: many ? `Unload ${branch.length} tabs` : 'Unload from memory', hint: 'Loads again when opened', run: () => unload(branch) },
@@ -462,26 +537,23 @@ function selectionMenu() {
   const nodes = selectedNodes();
   const ids = [...new Set(nodes.flatMap(tabIdsUnder))];
   return [
-    { label: `Put ${plural(nodes.length, 'item')} into a new folder`, run: selectionToFolder },
-    nodes.some(n => !n.parent?.root) && { label: 'Move to the top level', run: () => moveToTop(nodes) },
-    ids.length > 0 && { label: 'Copy links as Markdown', run: () => copyText(markdownOf(nodes), 'Links copied') },
+    { label: `Put ${plural(nodes.length, 'item')} into a new folder`, icon: 'toFolder', run: selectionToFolder },
+    nodes.some(n => !n.parent?.root) && { label: 'Move to the top level', icon: 'dropZone', run: () => moveToTop(nodes) },
+    ids.length > 0 && { label: 'Copy links as Markdown', icon: 'copy', run: () => copyText(markdownOf(nodes), 'Links copied') },
     '-',
     ids.length > 0 && { label: `Reload ${plural(ids.length, 'tab')}`, run: () => reload(ids) },
     ids.length > 0 && { label: `Unload ${plural(ids.length, 'tab')}`, run: () => unload(ids) },
     '-',
-    { label: `Close ${describe(nodes)}`, danger: true, run: closeSelection },
+    { label: `Close ${describe(nodes)}`, icon: 'closeTabs', danger: true, run: closeSelection },
   ];
 }
 
 function moreButton(node) {
-  const b = el('button', 'badge on-hover more', '⋯');
-  b.title = 'More actions (right click)';
-  b.setAttribute('aria-label', 'More actions');
-  b.onclick = e => {
-    e.stopPropagation();
+  const b = iconButton('ab more', 'more', 'More actions', 'More actions (right click)', () => {
     const r = b.getBoundingClientRect();
-    openMenu(menuFor(node), { x: r.right, y: (r.bottom ?? 0) + 2, above: (r.top ?? 0) - 2, alignRight: true });
-  };
+    openMenu(menuFor(node), { x: r.right, y: (r.bottom ?? 0) + 2, above: (r.top ?? 0) - 2, alignRight: true }, nodeRef(node));
+  });
+  b.setAttribute('aria-haspopup', 'menu');
   return b;
 }
 
@@ -489,14 +561,14 @@ const onRightClick = (row, node) => {
   row.oncontextmenu = e => {
     e.preventDefault();
     e.stopPropagation();
-    openMenu(menuFor(node), { x: e.clientX, y: e.clientY });
+    openMenu(menuFor(node), { x: e.clientX, y: e.clientY }, nodeRef(node));
   };
 };
 
 listEl.addEventListener('contextmenu', e => {
   if (e.target !== listEl || view !== 'tree' || qEl.value.trim()) return;
   e.preventDefault();
-  openMenu([{ label: 'New folder', run: () => addFolder(root) }], { x: e.clientX, y: e.clientY });
+  openMenu([{ label: 'New folder', icon: 'newFolder', run: () => addFolder(root) }], { x: e.clientX, y: e.clientY });
 });
 document.addEventListener('mousedown', e => {
   if (!menuEl.hidden && !menuEl.contains(e.target)) closeMenu();
@@ -519,7 +591,12 @@ function startRename(row, folderId) {
   const input = el('input', 'rename');
   input.value = original;
   input.placeholder = 'Folder name';
-  row.querySelector('.title').replaceWith(input);
+  input.setAttribute('aria-label', 'Folder name');
+  const keys = [el('kbd', 'k', '↵'), el('kbd', 'k', 'Esc')];
+  keys[0].title = 'Enter keeps the name';
+  keys[1].title = 'Esc puts the old name back';
+  row.classList.add('renaming');
+  row.querySelector('.title').replaceWith(input, ...keys);
   input.focus();
   input.select();
   const save = name => send({ type: 'renameFolder', id: folderId, name });
@@ -546,18 +623,18 @@ function startRename(row, folderId) {
   input.onblur = () => finish(input.value.trim());
 }
 
-function withOtherWorkspaces(roots) {
+// The tabs of the other workspaces, one group per workspace.
+function otherWorkspaces() {
   const byWs = new Map();
   for (const t of allTabs) {
     if (!otherIds.has(t.id)) continue;
     if (!byWs.has(t.workspaceId)) byWs.set(t.workspaceId, { name: t.workspaceName, list: [] });
     byWs.get(t.workspaceId).list.push(t);
   }
-  const extra = [...byWs].map(([ws, { name, list }]) => ({
-    group: { id: `ws:${ws}`, title: `Workspace: ${name || ws}`, defaultCollapsed: true },
+  return [...byWs].map(([ws, { name, list }]) => ({
+    group: { id: `ws:${ws}`, title: name || String(ws), defaultCollapsed: true },
     children: list.map(t => ({ tab: t, children: [] })),
   }));
-  return [...roots, ...extra];
 }
 
 // ---- rendering ----
@@ -576,7 +653,10 @@ function el(tag, cls, text) {
 // it takes the whole ticket along. Grabbing a selected row drags the whole selection.
 
 let drag = null; // { node, ticket } for one row (ticket: the root, for a ticket's own page), or { many }
-const topZone = el('div', 'drop-zone', 'Drop here: last on the top level');
+const topZone = el('div', 'drop-zone');
+topZone.append(icon('dropZone'), 'Drop here: last on the top level');
+// Before and after: a line where the item will land, at its depth (the target row's).
+const dropLine = el('i', 'dl');
 
 const inside = (node, ancestor) => {
   for (let n = node; n; n = n.parent) if (n === ancestor) return true;
@@ -607,6 +687,24 @@ function placement(target, zone) {
   return { type: 'place', nodes: moving.map(nodeRef), parent: nodeRef(parent), order: siblings.map(nodeRef) };
 }
 
+// What the pointer carries: the row's favicon (or folder glyph) and title, and how many rows go along.
+function dragImage(e, node) {
+  const lead = drag.many?.[0] ?? node;
+  const ghost = el('div', 'ghost');
+  if (lead.folder) {
+    ghost.append(folderGlyph(lead.folder.color), el('span', 'title', lead.folder.name));
+  } else {
+    ghost.append(favicon(lead.tab));
+    if (lead.ticket) ghost.append(el('span', 'key', lead.ticket.key));
+    ghost.append(el('span', 'title', labelOf(lead).text));
+  }
+  if (drag.many) ghost.append(el('span', 'count', String(drag.many.length)));
+  document.body.append(ghost);
+  e.dataTransfer.setDragImage?.(ghost, 14, 14);
+  // The browser takes its picture of the element when dragstart returns.
+  setTimeout(() => ghost.remove());
+}
+
 function dragAndDrop(row, node) {
   row.draggable = true;
   row.ondragstart = e => {
@@ -617,16 +715,21 @@ function dragAndDrop(row, node) {
     paused = true; // a re-render would remove the row being dragged
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', nodeRef(node));
+    dragImage(e, node);
     row.classList.add('dragging');
     listEl.append(topZone);
   };
   row.ondragend = () => {
     drag = null;
     topZone.remove();
+    dropLine.remove();
     paused = false;
     refresh();
   };
-  const clear = () => row.classList.remove('drop-before', 'drop-after', 'drop-inside');
+  const clear = () => {
+    row.classList.remove('drop-before', 'drop-after', 'drop-inside');
+    if (dropLine.parentNode === row) dropLine.remove();
+  };
   row.ondragover = e => {
     if (!drag) return;
     const zone = zoneOf(e, row);
@@ -635,6 +738,10 @@ function dragAndDrop(row, node) {
     e.preventDefault();
     e.stopPropagation();
     row.classList.add(`drop-${zone}`);
+    if (zone !== 'inside') {
+      dropLine.className = `dl ${zone}`;
+      row.append(dropLine);
+    }
   };
   row.ondragleave = clear;
   row.ondrop = e => {
@@ -662,10 +769,10 @@ topZone.ondrop = e => {
   send({ type: 'place', nodes: moving.map(nodeRef), parent: 'root', order });
 };
 
-const pad = depth => `${4 + depth * 14}px`;
 const activate = t => chrome.tabs.update(t.id, { active: true });
 const nextColor = color => COLORS[(COLORS.indexOf(color) + 1) % COLORS.length];
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const islandsOn = () => !!chrome.tabGroups && settings.mirrorIslands !== false;
 
 function button(cls, text, title, onClick) {
   const b = el('button', cls, text);
@@ -677,11 +784,22 @@ function button(cls, text, title, onClick) {
   return b;
 }
 
-function colorDot(color) {
-  const dot = el('span', 'dot');
-  dot.style.background = GROUP_COLORS[color] || color;
+// A button that shows only an icon names itself for screen readers, and in its tooltip.
+function iconButton(cls, name, label, title, onClick) {
+  const b = button(cls, null, title, onClick);
+  b.setAttribute('aria-label', label);
+  b.append(icon(name));
+  return b;
+}
+
+// A folder's color as the folder glyph (rows, menus) or as a small square (paths, islands).
+function folderGlyph(color) {
+  const dot = el('span', `dot c-${color}`);
+  dot.append(icon('folder', ''));
   return dot;
 }
+
+const colorSquare = color => el('span', `sq c-${color}`);
 
 function favicon(t) {
   const letter = () => el('span', 'noicon', (hostOf(t.url).replace(/^www\./, '')[0] || '•').toUpperCase());
@@ -700,33 +818,99 @@ function toggle(id) {
   render();
 }
 
+// The chevron of a row with children (`open` true or false), or an empty slot.
+function twisty(open, onClick) {
+  const tw = el('span', open ? 'twisty open' : 'twisty');
+  if (open != null) tw.append(icon('twisty'));
+  if (onClick) {
+    tw.onclick = e => {
+      e.stopPropagation();
+      onClick();
+    };
+  }
+  return tw;
+}
+
+const KIND_ICONS = { mr: 'mr', pipeline: 'pipeline', job: 'job', build: 'build' };
+
+// A page kind as an icon and a number ("!820 · changes"); the words are in its tooltip.
+function kindTag(kind) {
+  const tag = el('span', 'kind');
+  tag.title = kind.label;
+  if (KIND_ICONS[kind.type]) tag.append(icon(KIND_ICONS[kind.type], 'i s'));
+  tag.append(kind.number ? kind.number + (kind.view ? ` · ${kind.view}` : '') : kind.label);
+  return tag;
+}
+
+function countPill(text, title) {
+  const pill = el('span', 'count', text);
+  if (title) pill.title = title;
+  return pill;
+}
+
+// The buttons a row shows on hover, in place of its count.
+function actions(...buttons) {
+  const box = el('span', 'acts');
+  box.append(...buttons.filter(Boolean));
+  return box;
+}
+
+function grip() {
+  const handle = el('span', 'ab grip');
+  handle.title = 'Drag to move';
+  handle.setAttribute('aria-hidden', 'true');
+  handle.append(icon('drag'));
+  return handle;
+}
+
 function dupButton(ids) {
   const dups = ids.filter(tid => dupIds.has(tid));
   if (!dups.length) return [];
-  const label = `✕ ${dups.length} dup${dups.length === 1 ? '' : 's'}`;
-  return [button('badge dup', label, 'Close extra copies, keep the active or most recently used one', () => chrome.tabs.remove(dups))];
+  const b = button('badge dup', null, 'Close extra copies, keep the active or most recently used one', () => chrome.tabs.remove(dups));
+  b.setAttribute('aria-label', `Close ${plural(dups.length, 'duplicate')}`);
+  b.append(icon('close', 'i s'), plural(dups.length, 'dup'));
+  return [b];
 }
 
-function tabRow(t, depth, { twisty = '', onTwisty, key, label } = {}) {
+let rail = null; // the island being drawn: its color, and its last row so far
+
+// A row's depth sets its indent and guides; a row inside an island carries the island's color for the rail.
+function placeRow(row, depth) {
+  row.style.setProperty('--d', depth);
+  if (!rail) return;
+  row.classList.add('isl', `c-${rail.color}`);
+  rail.last = row;
+}
+
+// What a tab row reads: a ticket's page that only repeats the ticket's title reads as its kind.
+function labelOf(node) {
+  if (node.ticket) return rowLabel(node.tab, node.ticket.key, null);
+  if (node.groupKey) return rowLabel(node.tab, node.groupKey, node.groupTitle);
+  return rowLabel(node.tab, null, null);
+}
+
+function tabRow(t, depth, { open, onTwisty, key, label } = {}) {
   const row = el('div', 'row');
-  row.classList.toggle('active', t.active);
+  placeRow(row, depth);
+  row.classList.toggle('current', !!t.active);
   row.classList.toggle('discarded', !!t.discarded);
-  row.style.paddingLeft = pad(depth);
-  const tw = el('span', 'twisty', twisty);
-  if (onTwisty) {
-    tw.onclick = e => {
-      e.stopPropagation();
-      onTwisty();
-    };
-  }
-  row.append(tw, favicon(t));
+  row.append(twisty(open, onTwisty), favicon(t));
   if (key) row.append(el('span', 'key', key));
-  const { text, kind, draft } = label || { ...cleanTitle(t, key), kind: null };
-  row.append(el('span', 'title', text));
-  if (kind) row.append(el('span', 'badge', kind));
-  if (draft) row.append(el('span', 'badge', 'draft'));
-  if (dupIds.has(t.id)) row.append(el('span', 'badge dup', 'dup'));
-  if (t.audible) row.append(el('span', 'badge', '♪'));
+  const { text, kind, draft, asKind } = label ?? rowLabel(t, null, null);
+  row.append(el('span', asKind ? 'title as-kind' : 'title', text));
+  if (kind) row.append(kindTag(kind));
+  if (draft) row.append(el('span', 'badge draft', 'draft'));
+  if (dupIds.has(t.id)) {
+    const dup = el('span', 'badge dup', 'dup');
+    dup.title = 'Another tab has the same URL';
+    row.append(dup);
+  }
+  if (t.audible) {
+    const sound = el('span', 'audible');
+    sound.title = 'Playing sound';
+    sound.append(icon('sound', 'i s'));
+    row.append(sound);
+  }
   row.title = `${t.title}\n${t.url}`;
   row.onclick = () => activate(t);
   row.onmousedown = e => {
@@ -738,30 +922,39 @@ function tabRow(t, depth, { twisty = '', onTwisty, key, label } = {}) {
   return row;
 }
 
+function folderCountTitle(n, topLevel) {
+  if (!topLevel || !islandsOn() || n === 0) return plural(n, 'tab');
+  return n >= 2 ? `${plural(n, 'tab')} · an island in Opera's tab strip` : '1 tab · no island: Opera keeps no one-tab islands';
+}
+
 function renderFolder(node, depth, out) {
   const f = node.folder;
   const id = `${view}:${nodeRef(node)}`;
   const isCollapsed = collapsed.has(id);
-  const row = el('div', 'row group folder');
+  const ids = tabIdsUnder(node);
+  // A top-level folder with two or more tabs is an island: a rail in its color runs down all its rows.
+  const island = depth === 0 && islandsOn() && ids.length >= 2;
+  if (island) rail = { color: f.color, last: null };
+  const row = el('div', 'row folder');
   row.dataset.folder = f.id;
+  row.dataset.ref = nodeRef(node);
+  placeRow(row, depth);
+  row.classList.toggle('head', island);
   row.classList.toggle('selected', selection.has(nodeRef(node)));
   visible.push(nodeRef(node));
-  row.style.paddingLeft = pad(depth);
-  row.append(el('span', 'twisty', node.children.length ? (isCollapsed ? '▸' : '▾') : ''));
-  const dot = colorDot(f.color);
+  const dot = folderGlyph(f.color);
   dot.title = 'Change color';
   dot.onclick = e => {
     e.stopPropagation();
     send({ type: 'colorFolder', id: f.id, color: nextColor(f.color) });
   };
-  const ids = tabIdsUnder(node);
   row.append(
+    twisty(node.children.length ? !isCollapsed : undefined),
     dot,
     el('span', 'title', f.name),
     ...dupButton(ids),
-    button('badge on-hover', '+', 'New folder inside', () => addFolder(node)),
-    moreButton(node),
-    el('span', 'count', String(ids.length)),
+    actions(iconButton('ab', 'newFolder', 'New folder inside', 'New folder inside', () => addFolder(node)), moreButton(node), grip()),
+    countPill(String(ids.length), folderCountTitle(ids.length, depth === 0)),
   );
   row.onclick = e => {
     if (!clickSelects(e, node)) toggle(id);
@@ -770,6 +963,10 @@ function renderFolder(node, depth, out) {
   dragAndDrop(row, node);
   out.append(row);
   if (!isCollapsed) for (const c of node.children) renderNode(c, depth + 1, out);
+  if (island) {
+    rail.last.classList.add('end');
+    rail = null;
+  }
 }
 
 // The other workspaces' tabs: a plain list, nothing to drag.
@@ -779,9 +976,9 @@ function renderGroup(node, depth, out) {
   // For groups that start collapsed the set remembers the opposite state.
   const isCollapsed = g.defaultCollapsed ? !collapsed.has(id) : collapsed.has(id);
   const row = el('div', 'row group');
-  row.style.paddingLeft = pad(depth);
-  row.append(el('span', 'twisty', isCollapsed ? '▸' : '▾'), el('span', 'title', g.title));
-  row.append(el('span', 'count', String(node.children.length)));
+  placeRow(row, depth);
+  row.title = `Workspace ${g.title}: its tabs open there`;
+  row.append(twisty(!isCollapsed), icon('workspace', 'i ws'), el('span', 'title', g.title), countPill(String(node.children.length)));
   row.onclick = () => toggle(id);
   out.append(row);
   if (!isCollapsed) for (const c of node.children) out.append(tabRow(c.tab, depth + 1));
@@ -789,27 +986,29 @@ function renderGroup(node, depth, out) {
 
 function renderNode(node, depth, out) {
   if (node.folder) return renderFolder(node, depth, out);
-  if (node.group) return renderGroup(node, depth, out);
   const t = node.tab;
   const id = `${view}:${nodeRef(node)}`;
   const hasKids = node.children.length > 0;
   const isCollapsed = hasKids && collapsed.has(id);
   const { ticket } = node;
-  let label;
-  if (ticket) label = rowLabel(t, ticket.key, null);
-  else if (node.groupKey) label = rowLabel(t, node.groupKey, node.groupTitle);
   const row = tabRow(t, depth, {
-    twisty: hasKids ? (isCollapsed ? '▸' : '▾') : '',
+    open: hasKids ? !isCollapsed : undefined,
     onTwisty: hasKids ? () => toggle(id) : undefined,
     key: ticket?.key,
-    label,
+    label: labelOf(node),
   });
-  const branch = tabIdsUnder(node);
-  if (isCollapsed) row.append(el('span', 'count', `+${branch.length - 1}`));
-  if (ticket && node.parent?.root) {
-    row.append(button('badge on-hover', '→ folder', `Put ${ticket.key} and everything under it into a new folder`, () => familyToFolder(node)));
-  }
-  row.append(button('badge on-hover close', '✕', 'Close tab (middle click)', () => chrome.tabs.remove(t.id)), moreButton(node));
+  // A top-level ticket can become a folder; its actions leave out the drag handle to stay three wide.
+  const toFolder = ticket && node.parent?.root && iconButton('ab', 'toFolder', `Put ${ticket.key} into a new folder`,
+    `Put ${ticket.key} and everything under it into a new folder`, () => familyToFolder(node));
+  row.append(actions(
+    toFolder,
+    iconButton('ab', 'close', 'Close tab', 'Close tab (middle click)', () => chrome.tabs.remove(t.id)),
+    moreButton(node),
+    !toFolder && grip(),
+  ));
+  const folded = tabIdsUnder(node).length - 1;
+  if (isCollapsed) row.append(countPill(`+${folded}`, `${plural(folded, 'tab')} folded under it`));
+  row.dataset.ref = nodeRef(node);
   row.classList.toggle('selected', selection.has(nodeRef(node)));
   visible.push(nodeRef(node));
   row.onclick = e => {
@@ -856,15 +1055,15 @@ function shortTitle(tab) {
   return text.length > 30 ? `${text.slice(0, 29)}…` : text;
 }
 
-// Where a tab sits: the folders and the tickets or pages above it, top down.
+// Where a tab sits: the folders and the tickets or pages above it, top down, with the top-level folder's color.
 function crumbs(t) {
   const box = el('span', 'crumbs');
   if (otherIds.has(t.id)) {
-    box.textContent = `Workspace ${t.workspaceName || ''} · opens there`;
+    box.append(icon('workspace', 'i s'), `Workspace ${t.workspaceName || ''} · opens there`);
     return box;
   }
   if (t.pinned) {
-    box.textContent = 'Pinned';
+    box.append(icon('pin', 'i s'), 'Pinned');
     return box;
   }
   const parts = [];
@@ -877,8 +1076,12 @@ function crumbs(t) {
       parts.unshift(n.ticket?.key ?? shortTitle(n.tab));
     }
   }
-  if (color) box.append(colorDot(color));
-  box.append(parts.length ? parts.join(' › ') : 'Top level');
+  if (color) box.append(colorSquare(color));
+  if (!parts.length) box.append('Top level');
+  parts.forEach((part, i) => {
+    if (i) box.append(el('span', 'sep', ' › '));
+    box.append(el('span', 'part', part));
+  });
   return box;
 }
 
@@ -887,17 +1090,17 @@ function hitRow(t, terms) {
   const key = ticketKey(t) ?? undefined;
   const { text, kind, draft } = rowLabel(t, key, null);
   const row = el('div', 'row hit');
-  row.classList.toggle('active', t.active);
+  row.classList.toggle('current', !!t.active && !otherIds.has(t.id));
   row.classList.toggle('discarded', !!t.discarded);
   const line = el('span', 'line');
   if (key) line.append(el('span', 'key', key));
   const title = el('span', 'title');
   title.append(marked(text, terms));
   line.append(title);
-  if (kind) line.append(el('span', 'badge', kind));
-  if (draft) line.append(el('span', 'badge', 'draft'));
+  if (kind) line.append(kindTag(kind));
+  if (draft) line.append(el('span', 'badge draft', 'draft'));
   if (dupIds.has(t.id)) line.append(el('span', 'badge dup', 'dup'));
-  if (otherIds.has(t.id)) line.append(el('span', 'badge', t.workspaceName || 'other workspace'));
+  if (otherIds.has(t.id)) line.append(el('span', 'badge ws', t.workspaceName || 'other workspace'));
   const body = el('span', 'body');
   body.append(line, crumbs(t));
   row.append(favicon(t), body);
@@ -910,7 +1113,10 @@ function hitRow(t, terms) {
     if (e.button === 1) chrome.tabs.remove(t.id);
   };
   const node = treeNodes.get(t.id);
-  if (node) onRightClick(row, node);
+  if (node) {
+    row.dataset.ref = nodeRef(node);
+    onRightClick(row, node);
+  }
   return row;
 }
 
@@ -922,18 +1128,38 @@ function renderSearch(q, out) {
   });
   selected = Math.max(0, Math.min(selected, hits.length - 1));
   if (!hits.length) {
-    out.append(el('div', 'note', 'No tabs match. Every word has to match a title, URL, ticket key or page kind (mr, pipeline, jira); all workspaces are searched.'));
+    const clear = button('btn sm', 'Clear search', 'Clear the search (Esc)', clearSearch);
+    clear.append(el('kbd', 'k', 'Esc'));
+    out.append(emptyState('search', 'No tabs match',
+      'Every word has to match a title, URL, ticket key or page kind: mr, pipeline, jira. All workspaces are searched.', clear));
     return;
   }
-  out.append(el('div', 'meta', `${plural(hits.length, 'tab')} · ↑ ↓ move · Enter opens · Esc clears`));
+  const meta = el('div', 'meta');
+  meta.append(el('span', null, plural(hits.length, 'tab')), el('span', null, '↑ ↓ move · ↵ open · Esc clear'));
+  out.append(meta);
   hits.forEach((t, i) => {
     const row = hitRow(t, terms);
-    if (i === selected) row.classList.add('sel');
+    if (i === selected) row.classList.add('hl');
     out.append(row);
   });
 }
 
-// ---- setup guide and settings ----
+// ---- setup guide, empty states and settings ----
+
+function emptyState(glyph, title, text, ...more) {
+  const box = el('div', 'empty');
+  const mark = el('span', 'glyph');
+  mark.append(icon(glyph));
+  box.append(mark, el('h4', null, title), el('p', null, text), ...more);
+  return box;
+}
+
+// A button with an icon before its text.
+function labelButton(cls, name, text, title, onClick) {
+  const b = button(cls, text, title, onClick);
+  b.prepend(icon(name));
+  return b;
+}
 
 function guideCard() {
   const card = el('section', 'card guide');
@@ -942,24 +1168,25 @@ function guideCard() {
   const done = settings.setup ?? {};
   const steps = el('ol', 'steps');
   SETUP_STEPS.forEach(([id, name, text], i) => {
-    const li = el('li');
+    const li = el('li', done[id] ? 'done' : null);
     li.dataset.step = id;
-    li.classList.toggle('done', !!done[id]);
+    const num = el('span', 'num', done[id] ? null : String(i + 1));
+    if (done[id]) num.append(icon('done', 'i s'));
     const words = el('span');
-    words.append(el('b', null, name), el('span', 'muted', text));
-    li.append(el('span', 'num', done[id] ? '✓' : String(i + 1)), words);
+    words.append(el('b', null, name), text);
+    li.append(num, words);
     li.title = done[id] ? 'Mark as not done' : 'Mark as done';
     li.onclick = () => setSetting('setup', (setup = {}) => ({ ...setup, [id]: !setup[id] }));
     steps.append(li);
   });
   const actions = el('div', 'actions');
   actions.append(
-    button('btn primary', 'Got it', "Don't show the guide again (Settings can bring it back)", () => {
+    button('btn primary sm', 'Got it', "Don't show the guide again (Settings can bring it back)", () => {
       settings = { ...settings, onboarded: true };
       setSetting('onboarded', true);
       render();
     }),
-    button('btn', 'Later', 'Hide the guide until the panel is opened again', () => {
+    button('btn sm', 'Later', 'Hide the guide until the panel is opened again', () => {
       guideLater = true;
       render();
     }),
@@ -977,11 +1204,15 @@ function showGuide() {
 
 function renderSettings() {
   const out = el('div', 'settings');
-  const section = name => out.append(el('h3', null, name));
-  const option = (name, text, control) => {
+  const section = name => out.append(el('div', 'sub', name));
+  // A switch is named by a label, so that a click on the name flips it too.
+  const option = (name, text, control, ...more) => {
     const opt = el('div', 'opt');
     const words = el('div', 'txt');
-    words.append(el('b', null, name), el('p', null, text));
+    const title = el(control.type === 'checkbox' ? 'label' : 'div');
+    if (control.type === 'checkbox') title.htmlFor = control.id;
+    title.append(el('b', null, name));
+    words.append(title, el('p', null, text), ...more);
     opt.append(words, control);
     out.append(opt);
   };
@@ -994,45 +1225,52 @@ function renderSettings() {
     return box;
   };
 
+  section('Background');
+  out.append(backgroundSettings());
+
   section('Tree');
-  option('Auto-folders', 'A ticket family on the top level gets a folder of its own once it has a second tab.',
-    toggleBox('set-auto-folders', settings.autoFolders !== false, on => setSetting('autoFolders', on)));
   const keys = Object.keys(declined).sort();
   const chips = el('div', 'chips');
+  chips.setAttribute('aria-label', 'Tickets that never get a folder');
   chips.append(el('span', 'muted', keys.length ? 'Never for' : 'No ticket is kept out of automatic folders.'));
   for (const key of keys) {
     const chip = el('span', 'chip', key);
     chip.dataset.key = key;
-    chip.append(button('chip-x', '✕', `Allow a folder for ${key}`, () => send({ type: 'allowAutoFolder', key })));
+    const allow = button(null, null, `Allow a folder for ${key}`, () => send({ type: 'allowAutoFolder', key }));
+    allow.setAttribute('aria-label', allow.title);
+    allow.append(icon('close', 'i s'));
+    chip.append(allow);
     chips.append(chip);
   }
-  out.append(chips);
+  option('Auto-folders', 'A ticket family on the top level gets a folder of its own once it has a second tab.',
+    toggleBox('set-auto-folders', settings.autoFolders !== false, on => setSetting('autoFolders', on)), chips);
 
   section('Opera');
-  const mirrorOn = !!chrome.tabGroups && settings.mirrorIslands !== false;
+  const mirrorOn = islandsOn();
   option('Islands', "Every top-level folder with two or more tabs is an island in Opera's tab strip. Changes made to islands in Opera are put back.",
     toggleBox('set-mirror', mirrorOn, on => setSetting('mirrorIslands', on)));
   const islands = el('ul', 'islands');
   for (const n of root.children.filter(c => c.folder)) {
     const count = tabIdsUnder(n).length;
     const state = !mirrorOn ? 'islands are off' : count >= 2 ? 'island' : count === 1 ? 'no island, Opera needs 2' : 'no island';
-    const li = el('li');
+    const li = el('li', 'il');
     li.dataset.folder = n.folder.id;
-    li.append(colorDot(n.folder.color), el('span', 'title', n.folder.name), el('span', 'count', `${plural(count, 'tab')} · ${state}`));
+    li.append(colorSquare(n.folder.color), el('span', 'grow', n.folder.name), el('span', 'm', `${plural(count, 'tab')} · ${state}`));
     islands.append(li);
   }
-  if (!islands.childElementCount) islands.append(el('li', 'muted', 'No folders on the top level yet.'));
+  if (!islands.childElementCount) islands.append(el('li', 'il m', 'No folders on the top level yet.'));
   out.append(islands);
 
   section('Diagnostics');
   option('Report', "Opera's version and APIs, counts, the snapshot and the last 60 events. Paste it into a session.",
-    button('btn', 'Copy', 'Copy the report', copyReport));
-  option('Log', 'The same report, live.', button('btn', 'Open', 'Open the log', () => switchView('log')));
+    labelButton('btn sm', 'copy', 'Copy', 'Copy the report', copyReport));
+  option('Log', 'The same report, live, with every event as it happens.',
+    labelButton('btn sm', 'log', 'Open', 'Open the log', () => switchView('log')));
 
   section('Setup');
   option('Setup guide', "Pin the panel, collapse Opera's tab strip, turn off Opera's own Tab Islands.",
-    button('btn', 'Show', 'Show the setup guide above the tree', showGuide));
-  listEl.replaceChildren(out);
+    button('btn sm', 'Show', 'Show the setup guide above the tree', showGuide));
+  return out;
 }
 
 // ---- the whole panel ----
@@ -1041,10 +1279,10 @@ function renderPinned() {
   pinnedEl.replaceChildren();
   if (view === 'tree') {
     for (const t of tabs.filter(t => t.pinned)) {
-      const b = el('button');
-      b.title = t.title;
-      b.classList.toggle('active', t.active);
+      const b = el('button', t.active ? 'pin on' : 'pin');
+      b.title = t.audible ? `${t.title} · playing` : t.title;
       b.append(favicon(t));
+      if (t.audible) b.append(el('span', 'snd'));
       b.onclick = () => activate(t);
       pinnedEl.append(b);
     }
@@ -1052,14 +1290,45 @@ function renderPinned() {
   pinnedEl.hidden = !pinnedEl.childElementCount;
 }
 
+// The status bar: the counts, then a square for each island (a click opens Settings).
 function renderStats() {
   const keys = new Set(tabs.map(t => ticketKey(t)).filter(Boolean));
-  const others = otherIds.size ? ` (+${otherIds.size} in other workspaces)` : '';
-  statsEl.textContent = `${plural(tabs.length, 'tab')}${others} · ${plural(Object.keys(folders).length, 'folder')} · ${plural(keys.size, 'ticket')}`;
+  const parts = [plural(tabs.length, 'tab'), plural(Object.keys(folders).length, 'folder'), plural(keys.size, 'ticket')];
+  const elsewhere = new Map();
+  for (const t of allTabs) {
+    if (otherIds.has(t.id)) elsewhere.set(t.workspaceId, t.workspaceName || 'another workspace');
+  }
+  if (elsewhere.size === 1) parts.push(`+${otherIds.size} in ${[...elsewhere.values()][0]}`);
+  else if (elsewhere.size > 1) parts.push(`+${otherIds.size} in ${elsewhere.size} workspaces`);
+  statsEl.textContent = parts.join(' · ');
+  statsEl.title = statsEl.textContent;
+  const on = islandsOn();
+  const islands = on ? root.children.filter(n => n.folder && tabIdsUnder(n).length >= 2) : [];
+  islandsEl.hidden = on && !islands.length;
+  islandsEl.replaceChildren(on ? 'Islands' : 'Islands off');
+  for (const n of islands) {
+    const sq = colorSquare(n.folder.color);
+    sq.title = n.folder.name;
+    islandsEl.append(sq);
+  }
+  islandsEl.title = on
+    ? `${plural(islands.length, 'folder')} ${islands.length === 1 ? 'is an island' : 'are islands'} in Opera's tab strip`
+    : "Islands are off: folders aren't mirrored in Opera's tab strip";
+}
+
+islandsEl.onclick = () => switchView('settings');
+
+// Replaces what the list shows, keeping its scroll position and the control that had the focus.
+function redraw(...content) {
+  const scroll = listEl.scrollTop;
+  const focused = listEl.contains(document.activeElement) ? document.activeElement.id : '';
+  listEl.replaceChildren(...content);
+  listEl.scrollTop = scroll;
+  if (focused) document.getElementById(focused)?.focus();
 }
 
 function render() {
-  if (paused) {
+  if (paused || holding) {
     missed = true;
     return;
   }
@@ -1071,26 +1340,33 @@ function render() {
   for (const ref of selection) if (!nodeByRef.has(ref)) selection.delete(ref);
   renderPinned();
   renderStats();
-  const q = qEl.value.trim().toLowerCase();
-  if (!q && view !== 'tree') {
+  // While the field holds text, ✕ takes the place of the / hint.
+  $('#q-clear').hidden = !qEl.value;
+  $('.search .k').hidden = !!qEl.value;
+  if (view !== 'tree') {
     renderSelBar();
-    if (view === 'log') renderLog();
-    else renderSettings();
-    return;
+    return view === 'log' ? renderLog() : redraw(renderSettings());
   }
-  const scroll = listEl.scrollTop;
+  const q = qEl.value.trim().toLowerCase();
   const out = document.createDocumentFragment();
   if (q) {
     renderSearch(q, out);
   } else {
     visible = [];
+    rail = null;
     if (!settings.onboarded && !guideLater) out.append(guideCard());
-    for (const n of withOtherWorkspaces(root.children)) renderNode(n, 0, out);
+    if (!root.children.length) {
+      out.append(emptyState('emptyTree', 'No tabs in this workspace', 'Open a tab and it shows up here. A tab opened from another one hangs under it.',
+        labelButton('btn sm', 'newFolder', 'New folder', 'New folder on the top level', () => addFolder(root))));
+    }
+    for (const n of root.children) renderNode(n, 0, out);
+    const groups = otherWorkspaces();
+    if (groups.length) out.append(el('div', 'section', 'Other workspaces'));
+    for (const g of groups) renderGroup(g, 0, out);
   }
   renderSelBar();
-  listEl.replaceChildren(out);
-  listEl.scrollTop = scroll;
-  if (q) listEl.querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
+  redraw(out);
+  if (q) listEl.querySelector('.hl')?.scrollIntoView({ block: 'nearest' });
   const fresh = pendingRename && listEl.querySelector(`[data-folder="${pendingRename}"]`);
   if (fresh) {
     pendingRename = null;
@@ -1099,7 +1375,7 @@ function render() {
   }
 }
 
-// ---- diagnostics report ----
+// ---- log and report ----
 
 function apiNames(o) {
   if (!o) return 'none';
@@ -1111,8 +1387,10 @@ function apiNames(o) {
   return [...names].sort().join(', ') || '(empty)';
 }
 
+const clock = t => new Date(t).toLocaleTimeString('en-GB', { hour12: false });
+
 function fmtEvent(e) {
-  const ts = new Date(e.t).toLocaleTimeString('en-GB', { hour12: false });
+  const ts = clock(e.t);
   switch (e.ev) {
     case 'created':
       return `${ts} created #${e.id} idx=${e.index} opener=${e.opener ?? '—'}${e.openerHost ? ` (${e.openerHost})` : ''} group=${e.groupId ?? '—'}${e.active ? ' active' : ''} → ${e.host || '?'}`;
@@ -1138,61 +1416,203 @@ function fmtEvent(e) {
   }
 }
 
-async function buildReport() {
+// What the report and the Log view are made of.
+async function diagnostics() {
   const ua = navigator.userAgent;
-  const yes = v => (v ? 'yes' : 'no');
   const count = f => allTabs.filter(f).length;
-  const keys = new Set(tabs.map(t => ticketKey(t)).filter(Boolean));
   const workspaces = new Map();
   for (const t of allTabs) workspaces.set(t.workspaceName ?? '(none)', (workspaces.get(t.workspaceName ?? '(none)') ?? 0) + 1);
-  const currentWs = tabs[0]?.workspaceName ?? '(none)';
   const { log = [], changes = [], snapshot } = await chrome.storage.local.get(['log', 'changes', 'snapshot']);
   const { mirror = {} } = await chrome.storage.session.get('mirror').catch(() => ({}));
-  const savedAt = snapshot ? new Date(snapshot.savedAt).toLocaleTimeString('en-GB', { hour12: false }) : null;
+  const byTime = (a, b) => a.t - b.t;
+  return {
+    opera: ua.match(/OPR\/([\d.]+)/)?.[1] ?? '?',
+    chromium: ua.match(/Chrome\/([\d.]+)/)?.[1] ?? '?',
+    platform: navigator.platform,
+    count: {
+      all: allTabs.length,
+      pinned: count(t => t.pinned),
+      active: count(t => t.active),
+      discarded: count(t => t.discarded),
+      island: count(t => (t.groupId ?? -1) !== -1),
+    },
+    workspaces: [...workspaces].map(([name, n]) => `«${name}» ${n}${name === (tabs[0]?.workspaceName ?? '(none)') ? ' (current)' : ''}`),
+    islands: settings.mirrorIslands === false ? 'off' : Object.keys(mirror).length,
+    placed: tabs.filter(t => parents[t.id] != null).length,
+    keyed: tabs.filter(t => ticketKey(t)).length,
+    keys: new Set(tabs.map(t => ticketKey(t)).filter(Boolean)).size,
+    snapshot: snapshot
+      ? `${snapshot.tabs.length} tabs, ${snapshot.tabs.filter(s => s.parent != null).length} placements, saved ${clock(snapshot.savedAt)}`
+      : 'none yet',
+    log: log.sort(byTime).slice(-60),
+    changes: changes.sort(byTime).slice(-30),
+  };
+}
+
+async function buildReport() {
+  const d = await diagnostics();
+  const yes = v => (v ? 'yes' : 'no');
+  const c = d.count;
   const lines = [
     '## TabTrees probe',
-    `- Opera ${ua.match(/OPR\/([\d.]+)/)?.[1] ?? '?'}, Chromium ${ua.match(/Chrome\/([\d.]+)/)?.[1] ?? '?'}, ${navigator.platform}`,
+    `- Opera ${d.opera}, Chromium ${d.chromium}, ${d.platform}`,
     `- opr: ${apiNames(globalThis.opr)}`,
     `- opr.sidebarAction: ${apiNames(globalThis.opr?.sidebarAction)}`,
     `- Tab fields: ${[...new Set(allTabs.flatMap(t => Object.keys(t)))].sort().join(', ')}`,
     `- chrome.sidebarAction: ${yes(chrome.sidebarAction)} · chrome.sidePanel: ${yes(chrome.sidePanel)} · chrome.tabGroups: ${yes(chrome.tabGroups)}`,
-    `- Tabs in window: ${allTabs.length} (pinned ${count(t => t.pinned)}, active ${count(t => t.active)}, discarded ${count(t => t.discarded)}, in an island ${count(t => (t.groupId ?? -1) !== -1)}); lastAccessed: ${yes(allTabs.some(t => typeof t.lastAccessed === 'number'))}`,
-    `- Workspaces: ${[...workspaces].map(([name, n]) => `«${name}» ${n}${name === currentWs ? ' (current)' : ''}`).join('; ')}`,
-    `- Folders: ${Object.keys(folders).length}; mirrored as islands: ${settings.mirrorIslands === false ? 'off' : Object.keys(mirror).length}; ordered by hand: ${Object.keys(ranks).length}; kept out of automatic folders: ${Object.keys(declined).length}`,
-    `- Tab placements: ${tabs.filter(t => parents[t.id] != null).length} of ${tabs.length} tabs; ticket keys: ${tabs.filter(t => ticketKey(t)).length} tabs, ${keys.size} distinct`,
-    `- Snapshot for restarts: ${snapshot ? `${snapshot.tabs.length} tabs, ${snapshot.tabs.filter(s => s.parent != null).length} placements, saved ${savedAt}` : 'none yet'}`,
+    `- Tabs in window: ${c.all} (pinned ${c.pinned}, active ${c.active}, discarded ${c.discarded}, in an island ${c.island}); lastAccessed: ${yes(allTabs.some(t => typeof t.lastAccessed === 'number'))}`,
+    `- Workspaces: ${d.workspaces.join('; ')}`,
+    `- Folders: ${Object.keys(folders).length}; mirrored as islands: ${d.islands}; ordered by hand: ${Object.keys(ranks).length}; kept out of automatic folders: ${Object.keys(declined).length}`,
+    `- Tab placements: ${d.placed} of ${tabs.length} tabs; ticket keys: ${d.keyed} tabs, ${d.keys} distinct`,
+    `- Snapshot for restarts: ${d.snapshot}`,
+    `- Wallpaper: ${wallpaperLine()}`,
   ];
-  const byTime = (a, b) => a.t - b.t;
-  lines.push('', '### Events', '```', ...log.sort(byTime).slice(-60).map(fmtEvent), '```');
-  lines.push('', '### Background tab changes', '```', ...changes.sort(byTime).slice(-30).map(fmtEvent), '```');
+  lines.push('', '### Events', '```', ...d.log.map(fmtEvent), '```');
+  lines.push('', '### Background tab changes', '```', ...d.changes.map(fmtEvent), '```');
   return lines.join('\n');
 }
 
-async function renderLog() {
-  const text = await buildReport();
-  if (paused || view !== 'log' || qEl.value.trim()) return;
-  listEl.replaceChildren(el('pre', 'log', text));
+// The Log view: the report's summary, then the events newest first, each tagged by its kind.
+const EVENT_TAGS = {
+  created: ['created', 'blue'], navTarget: ['link', 'blue'], place: ['place', 'purple'], folder: ['folder', 'yellow'],
+  migrated: ['folder', 'yellow'], mirror: ['mirror', 'cyan'], closed: ['closed', 'red'], restored: ['restored', 'green'],
+  title: ['title', 'grey'], favicon: ['favicon', 'grey'], installed: ['installed', 'grey'],
+};
+let logTab = 'events'; // or 'changes'
+
+const code = text => el('code', null, String(text));
+
+function eventWords(e) {
+  switch (e.ev) {
+    case 'created':
+      return [code(`#${e.id}`), ...(e.opener != null ? [' from ', code(`#${e.opener}`), e.openerHost ? ` ${e.openerHost}` : ''] : []), ` → ${e.host || '?'}`];
+    case 'navTarget':
+      return [code(`#${e.id}`), ' from ', code(`#${e.source}`), ` ${e.sourceHost ?? '?'} → ${e.host || '?'}`];
+    case 'place':
+      return [code(e.node), ' under ', code(e.parent)];
+    case 'folder':
+      return [`${{ auto: 'made automatically', create: 'created', delete: 'deleted' }[e.action] ?? e.action} «${e.name}»`];
+    case 'closed':
+      return [`a selection: ${plural(e.tabs, 'tab')}, ${plural(e.folders, 'folder')}`];
+    case 'mirror':
+      return [`${plural(e.islands, 'island')}, ${plural(e.moved, 'tab')} moved in, ${e.ungrouped} taken out`];
+    case 'migrated':
+      return [`islands turned into ${plural(e.folders, 'folder')}`];
+    case 'restored':
+      return [`${e.matched} of ${e.saved} saved tabs matched, ${plural(e.links, 'link')}`];
+    case 'favicon':
+    case 'title':
+      return [code(`#${e.id}`), ` ${e.host}`];
+    default:
+      return [`tabs=${e.tabs} withOpener=${e.withOpener} withGroup=${e.withGroup} discarded=${e.discarded}`];
+  }
 }
 
-function flash(msg) {
-  statsEl.textContent = msg;
-  setTimeout(renderStats, 2500);
+function eventRow(e) {
+  const [tag, color] = EVENT_TAGS[e.ev] ?? ['startup', 'grey'];
+  const row = el('div', 'ev');
+  const text = el('p');
+  text.append(...eventWords(e));
+  row.append(el('time', null, clock(e.t)), el('span', `t c-${color}`, tag), text);
+  return row;
+}
+
+function apiMark(name, ok) {
+  const mark = el('span', ok ? 'api' : 'api no');
+  mark.title = ok ? 'Available' : 'Missing';
+  mark.append(icon(ok ? 'done' : 'close', 'i s'), name);
+  return mark;
+}
+
+async function renderLog() {
+  const d = await diagnostics();
+  if (paused || view !== 'log') return;
+  const c = d.count;
+  const out = el('div', 'logv');
+  const kv = el('dl', 'kv');
+  const item = (name, ...value) => {
+    const dd = el('dd');
+    dd.append(...value);
+    kv.append(el('dt', null, name), dd);
+  };
+  item('Opera', `${d.opera} · Chromium ${d.chromium} · ${d.platform}`);
+  item('APIs', ...[
+    ['opr.sidebarAction', globalThis.opr?.sidebarAction],
+    ['chrome.tabGroups', chrome.tabGroups],
+    ['chrome.sidePanel', chrome.sidePanel],
+  ].map(([name, api]) => apiMark(name, !!api)));
+  item('Tabs', `${c.all} in window · ${c.pinned} pinned · ${c.discarded} discarded · ${c.island} in islands`);
+  item('Workspaces', d.workspaces.join(' · '));
+  item('Folders', `${Object.keys(folders).length} · islands ${d.islands} · ordered by hand ${Object.keys(ranks).length}`);
+  item('Placements', `${d.placed} of ${tabs.length} tabs · keys on ${d.keyed} tabs, ${d.keys} distinct`);
+  item('Snapshot', d.snapshot);
+  if (wallpaper) item('Wallpaper', wallpaperLine());
+  const seg = el('div', 'seg');
+  seg.setAttribute('role', 'tablist');
+  for (const [id, name, list, title] of [
+    ['events', 'Events', d.log, 'The last 60 events'],
+    ['changes', 'Background changes', d.changes, 'The last 30 title and favicon changes of tabs in the background'],
+  ]) {
+    const b = button(logTab === id ? 'on' : '', name, title, () => {
+      logTab = id;
+      render();
+    });
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', String(logTab === id));
+    b.append(el('span', 'n', String(list.length)));
+    seg.append(b);
+  }
+  out.append(el('div', 'sub', 'This window'), kv, seg);
+  const events = logTab === 'events' ? d.log : d.changes;
+  for (const e of [...events].reverse()) out.append(eventRow(e));
+  if (!events.length) out.append(el('div', 'note', 'Nothing yet.'));
+  redraw(out);
+}
+
+// ---- toasts ----
+// One message at a time, above the status bar: a confirmation for 2.5 s, or an error that stays longer and
+// offers the report.
+
+const toastsEl = $('#toasts');
+let toastTimer = 0;
+
+function toast(text, { error = false } = {}) {
+  clearTimeout(toastTimer);
+  const box = el('div', error ? 'toast err' : 'toast');
+  box.setAttribute('role', error ? 'alert' : 'status');
+  box.append(icon(error ? 'warning' : 'done'), el('span', 'grow', text));
+  if (error) box.append(button('btn sm', 'Copy report', 'Copy the report, to paste into a session', copyReport));
+  box.onclick = dismissToast;
+  toastsEl.replaceChildren(box);
+  toastTimer = setTimeout(dismissToast, error ? 8000 : 2500);
+}
+
+function dismissToast() {
+  clearTimeout(toastTimer);
+  toastsEl.replaceChildren();
 }
 
 async function copyReport() {
   const text = await buildReport();
-  try {
-    await navigator.clipboard.writeText(text);
-    flash('Report copied');
-    return;
-  } catch {}
-  // Fallback: show the report in a textarea and freeze re-rendering until Esc.
+  if (await writeClipboard(text)) toast('Report copied');
+  else copyByHand(text);
+}
+
+// When the clipboard refuses, the Log view shows the report selected, to copy by hand; Esc goes back.
+function copyByHand(text) {
+  if (view !== 'log') switchView('log');
   paused = true;
-  const ta = el('textarea', 'report');
-  ta.value = text;
-  listEl.replaceChildren(ta);
-  ta.select();
-  flash(document.execCommand('copy') ? 'Report copied (Esc to go back)' : 'Copy it manually: Ctrl+C, then Esc');
+  const banner = el('div', 'banner');
+  const words = el('span');
+  words.append('The clipboard refused. The report is selected: press ', el('b', null, 'Ctrl+C'), ', then ', el('b', null, 'Esc'), '.');
+  banner.append(icon('warning'), words);
+  const box = el('textarea', 'report');
+  box.value = text;
+  box.readOnly = true;
+  box.setAttribute('aria-label', 'Report');
+  listEl.replaceChildren(banner, box);
+  box.focus();
+  box.select();
 }
 
 $('#report').onclick = copyReport;
@@ -1204,22 +1624,344 @@ $('#new-folder').onclick = () => {
   addFolder(root);
 };
 
+// ---- wallpaper ----
+// A picture behind the panel, from Settings › Background. It is kept with its settings under the storage key
+// `wallpaper`, apart from `settings`, so that moving a slider redraws no tree; every panel (one per window)
+// follows it. Its only source is an image file; `source` leaves room for Opera's own wallpaper, which needs a
+// native helper.
+
+const wallEl = $('#wall');
+const scrimEl = $('#scrim');
+const darkTheme = globalThis.matchMedia?.('(prefers-color-scheme: dark)');
+const WALL_TOKENS = ['--scrim', '--accent', '--accent-fg', '--accent-text', '--sel', '--sel-hover'];
+const WALL_MAX = { height: 1400, width: 2800, bytes: 640_000 };
+let wallpaper = null; // { source, name, dataUrl, width, height, w, h, bytes, tones, x, dim, blur, accent }
+let wallWrites = 0; // writes of this panel still on their way to storage
+let holding = false; // a slider or the frame is held: redraws wait, they would replace it
+
+const shownWallpaper = () => (wallpaper?.source === 'file' && wallpaper.dataUrl ? wallpaper : null);
+
+// The picture under everything, the scrim over it (Dim), the blur and the position; the accent tokens when the
+// accent comes from the picture.
+function applyWallpaper() {
+  const w = shownWallpaper();
+  document.body.classList.toggle('wp', !!w);
+  wallEl.hidden = !w;
+  scrimEl.hidden = !w;
+  for (const name of WALL_TOKENS) document.body.style.removeProperty(name);
+  if (!w) {
+    wallEl.removeAttribute('src');
+    return;
+  }
+  if (wallEl.getAttribute('src') !== w.dataUrl) wallEl.src = w.dataUrl;
+  wallEl.style.setProperty('--x', `${w.x}%`);
+  wallEl.style.setProperty('--blur', `${w.blur}px`);
+  wallEl.classList.toggle('blur', w.blur > 0);
+  const { '--dim': dim, '--dim-top': top, ...tokens } = wallTokens(w.tones, { dark: !!darkTheme?.matches, dim: w.dim / 100, accent: w.accent });
+  scrimEl.style.setProperty('--dim', String(dim));
+  scrimEl.style.setProperty('--dim-top', String(top));
+  for (const [name, value] of Object.entries(tokens)) document.body.style.setProperty(name, value);
+}
+
+darkTheme?.addEventListener?.('change', () => {
+  applyWallpaper();
+  if (view === 'settings') render();
+});
+
+// Shows the wallpaper at once and stores it; null removes it.
+function saveWallpaper(next) {
+  wallpaper = next;
+  applyWallpaper();
+  wallWrites++;
+  const writing = next ? chrome.storage.local.set({ wallpaper: next }) : chrome.storage.local.remove('wallpaper');
+  return writing
+    .catch(e => toast(`The picture wasn't saved: ${e.message}`, { error: true }))
+    .finally(() => wallWrites--);
+}
+
+// Takes up what another panel stored; this panel's own writes are already shown.
+async function loadWallpaper() {
+  const { wallpaper: stored = null } = await chrome.storage.local.get('wallpaper');
+  if (wallWrites || JSON.stringify(stored) === JSON.stringify(wallpaper)) return;
+  wallpaper = stored;
+  applyWallpaper();
+  if (view === 'settings') render();
+}
+
+const bytesOf = dataUrl => Math.round(((dataUrl.length - dataUrl.indexOf(',') - 1) * 3) / 4);
+
+// Scales the picture down to at most 1400px tall (it covers the panel's height) and stores it as a JPEG of about
+// half a megabyte: quality 0.85, or less for a busy picture. Its colors are sampled at 64×36.
+async function readImage(file) {
+  const bitmap = await createImageBitmap(file);
+  const { width, height } = bitmap;
+  const scale = Math.min(1, WALL_MAX.height / height, WALL_MAX.width / width);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  let dataUrl = '';
+  for (const quality of [0.85, 0.78, 0.7, 0.62]) {
+    dataUrl = canvas.toDataURL('image/jpeg', quality);
+    if (bytesOf(dataUrl) <= WALL_MAX.bytes) break;
+  }
+  const sample = document.createElement('canvas');
+  sample.width = 64;
+  sample.height = 36;
+  const sampleCtx = sample.getContext('2d');
+  sampleCtx.drawImage(canvas, 0, 0, 64, 36);
+  const tones = tonesOf(sampleCtx.getImageData(0, 0, 64, 36).data);
+  return { dataUrl, width, height, w: canvas.width, h: canvas.height, bytes: bytesOf(dataUrl), tones };
+}
+
+async function useImage(file) {
+  try {
+    const picture = await readImage(file);
+    const kept = wallpaper ?? {};
+    await saveWallpaper({
+      source: 'file',
+      name: file.name,
+      ...picture,
+      x: 50,
+      dim: kept.dim ?? 70,
+      blur: kept.blur ?? 0,
+      accent: kept.accent ?? 'wallpaper',
+    });
+    render();
+  } catch (e) {
+    toast(`This picture can't be used: ${e.message}`, { error: true });
+  }
+}
+
+const pickImage = () => $('#wp-input').click();
+$('#wp-input').onchange = e => {
+  const [file] = e.target.files ?? [];
+  e.target.value = '';
+  if (file) useImage(file);
+};
+
+// While the pointer holds a slider or the frame, redraws wait; `done` runs when it lets go.
+function hold(done) {
+  holding = true;
+  const events = ['pointerup', 'pointercancel', 'blur'];
+  const release = e => {
+    // Only the window's own blur: the pointer may never come back up in it.
+    if (e.type === 'blur' && e.target !== window) return;
+    for (const type of events) window.removeEventListener(type, release, true);
+    holding = false;
+    done?.();
+    // Later than the pointer's own handlers: a slider stores its value on the change event that follows.
+    setTimeout(() => {
+      if (missed) render();
+    });
+  };
+  for (const type of events) window.addEventListener(type, release, true);
+}
+
+function adjustWallpaper(name, value, save) {
+  wallpaper = { ...wallpaper, [name]: value };
+  if (save) saveWallpaper(wallpaper);
+  else applyWallpaper();
+}
+
+// The share of the picture's width that the panel shows: the picture covers the panel's full height.
+function visibleShare(w) {
+  const panel = (document.documentElement.clientWidth || 380) / (document.documentElement.clientHeight || 900);
+  return Math.min(1, panel / (w.w / w.h));
+}
+
+// The whole picture with a frame over the part behind the panel; drag the frame (or use ← →) to move it.
+function wallSlice(w) {
+  const box = el('div', 'slice');
+  const img = el('img');
+  img.src = w.dataUrl;
+  img.alt = 'The whole picture';
+  const frame = el('span', 'win');
+  frame.id = 'wp-frame';
+  frame.tabIndex = 0;
+  frame.setAttribute('role', 'slider');
+  frame.setAttribute('aria-label', 'The part of the picture behind the panel');
+  frame.setAttribute('aria-valuemin', '0');
+  frame.setAttribute('aria-valuemax', '100');
+  const share = visibleShare(w);
+  const place = () => {
+    frame.style.width = `${share * 100}%`;
+    frame.style.left = `${(1 - share) * wallpaper.x}%`;
+    frame.setAttribute('aria-valuenow', String(wallpaper.x));
+  };
+  const moveTo = e => {
+    const r = box.getBoundingClientRect();
+    if (!r.width || share >= 1) return;
+    const left = (e.clientX - (r.left ?? 0)) / r.width - share / 2;
+    adjustWallpaper('x', Math.round(Math.min(1, Math.max(0, left / (1 - share))) * 100), false);
+    place();
+  };
+  box.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    frame.focus();
+    moveTo(e);
+    hold(() => saveWallpaper(wallpaper));
+  });
+  box.addEventListener('pointermove', e => {
+    if (holding) moveTo(e);
+  });
+  frame.onkeydown = e => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    adjustWallpaper('x', Math.min(100, Math.max(0, wallpaper.x + (e.key === 'ArrowRight' ? 5 : -5))), true);
+    place();
+  };
+  place();
+  box.append(img, frame);
+  return box;
+}
+
+function wallSlider(id, name, max, unit, key) {
+  const box = el('div', 'slider');
+  const head = el('div');
+  const label = el('label', null, name);
+  label.htmlFor = id;
+  const shown = el('span', null, `${wallpaper[key]}${unit}`);
+  head.append(label, shown);
+  const input = el('input', 'range');
+  input.type = 'range';
+  input.id = id;
+  input.min = '0';
+  input.max = String(max);
+  input.value = String(wallpaper[key]);
+  input.addEventListener('pointerdown', () => hold());
+  input.oninput = () => {
+    shown.textContent = `${input.value}${unit}`;
+    adjustWallpaper(key, Number(input.value), false);
+  };
+  input.onchange = () => adjustWallpaper(key, Number(input.value), true);
+  box.append(head, input);
+  return box;
+}
+
+function accentChoice(w) {
+  const box = el('div', 'accent-pick');
+  const list = el('div', 'accents');
+  list.setAttribute('role', 'radiogroup');
+  list.setAttribute('aria-label', 'Accent color');
+  const dark = !!darkTheme?.matches;
+  const own = wallTokens(w.tones, { dark, dim: w.dim / 100, accent: 'wallpaper' })['--accent'];
+  for (const [id, text, color] of [['blue', 'Blue', dark ? '#78a6ff' : '#2f6feb'], ['wallpaper', 'From wallpaper', own]]) {
+    const on = w.accent === id;
+    const b = button(on ? 'acc on' : 'acc', null, own || id === 'blue' ? `Accent: ${text}` : 'The picture has no color strong enough', () => {
+      saveWallpaper({ ...wallpaper, accent: id });
+      render();
+    });
+    b.dataset.accent = id;
+    b.disabled = !color;
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(on));
+    const swatch = el('span', 'sq');
+    if (color) swatch.style.background = color;
+    b.append(swatch, text);
+    list.append(b);
+  }
+  box.append(el('b', null, 'Accent'), list);
+  return box;
+}
+
+// Settings › Background: None or an image file; with a picture, its part behind the panel, Dim, Blur and the
+// accent.
+function backgroundSettings() {
+  const out = document.createDocumentFragment();
+  const file = wallpaper?.dataUrl ? wallpaper : null;
+  const shown = shownWallpaper();
+  const seg = el('div', 'seg');
+  seg.setAttribute('role', 'radiogroup');
+  seg.setAttribute('aria-label', 'Background');
+  const choice = (id, text, on, title, run) => {
+    const b = button(on ? 'on' : '', text, title, run);
+    b.id = id;
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(on));
+    seg.append(b);
+  };
+  choice('wp-none', 'None', !shown, 'No picture behind the tree', () => {
+    if (!shown) return;
+    saveWallpaper({ ...shown, source: 'none' });
+    render();
+  });
+  choice('wp-file', 'Image file', !!shown, file ? 'The picture picked before' : 'Pick a picture', () => {
+    if (shown) return;
+    if (!file) return pickImage();
+    saveWallpaper({ ...file, source: 'file' });
+    render();
+  });
+  out.append(seg);
+  if (!shown) {
+    out.append(el('div', 'wp-note', file ? `${file.name} is kept: Image file shows it again.` : 'Image file puts a picture of yours behind the tree.'));
+    return out;
+  }
+  const name = el('div', 'wp-name');
+  name.append(
+    el('span', null, `${shown.name} · ${shown.w}×${shown.h}`),
+    button('btn sm', 'Change…', 'Pick another picture', pickImage),
+    button('btn sm', 'Remove', 'Remove the picture', () => {
+      saveWallpaper(null);
+      render();
+    }),
+  );
+  out.append(
+    wallSlice(shown),
+    el('div', 'wp-note', 'Drag the frame to pick the part behind the panel.'),
+    name,
+    wallSlider('wp-dim', 'Dim', 100, '%', 'dim'),
+    wallSlider('wp-blur', 'Blur', 24, ' px', 'blur'),
+    accentChoice(shown),
+  );
+  return out;
+}
+
+// For the report: "image 2560×1440 → 2489×1400, 612 KB, x 12, dim 70, blur 0, accent #ee94c6".
+function wallpaperLine() {
+  const w = wallpaper;
+  if (!w?.dataUrl) return 'none';
+  const own = wallTokens(w.tones, { dark: !!darkTheme?.matches, dim: w.dim / 100, accent: w.accent })['--accent'];
+  const source = w.source === 'file' ? 'image' : 'none, an image is kept:';
+  return `${source} ${w.width}×${w.height} → ${w.w}×${w.h}, ${Math.round(w.bytes / 1024)} KB, x ${w.x}, dim ${w.dim}, blur ${w.blur}, accent ${own ?? 'blue'}`;
+}
+
 // ---- wiring ----
+
+// The tree has the search header; Log and Settings have a bar with ← and their title.
+function showView() {
+  document.body.dataset.view = view;
+  $('#hdr').hidden = view !== 'tree';
+  $('#vbar').hidden = view === 'tree';
+  $('#view-title').textContent = { log: 'Log', settings: 'Settings' }[view] ?? '';
+  $('#report').hidden = view !== 'log';
+}
 
 function switchView(next) {
   view = next;
   if (next !== 'settings') prefs.set('view', next);
-  for (const b of document.querySelectorAll('#views button[data-view]')) b.classList.toggle('on', b.dataset.view === next);
+  showView();
   closeMenu();
   paused = false;
   render();
 }
 
-for (const b of document.querySelectorAll('#views button[data-view]')) {
-  b.classList.toggle('on', b.dataset.view === view);
-  b.onclick = () => switchView(b.dataset.view);
+showView();
+$('#open-log').onclick = () => switchView('log');
+$('#open-settings').onclick = () => switchView('settings');
+$('#back').onclick = () => switchView('tree');
+
+function clearSearch() {
+  qEl.value = '';
+  selected = 0;
+  render();
+  qEl.focus();
 }
 
+$('#q-clear').onclick = clearSearch;
 qEl.addEventListener('input', () => {
   selected = 0;
   render();
@@ -1239,17 +1981,20 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape') closeMenu();
     return;
   }
-  if (e.key === 'Escape') {
+  if (e.key === 'Escape' && armed) {
+    disarm();
+  } else if (e.key === 'Escape') {
     paused = false;
     qEl.value = '';
     selection.clear();
     anchor = null;
     if (view !== 'tree') switchView('tree');
     else render();
-  } else if (e.key === 'Delete' && selection.size && document.activeElement !== qEl) {
+  } else if (e.key === 'Delete' && view === 'tree' && selection.size && document.activeElement !== qEl) {
     $('#sel-close').click();
-  } else if (e.key === '/' && document.activeElement !== qEl) {
+  } else if (e.key === '/' && !/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName)) {
     e.preventDefault();
+    if (view !== 'tree') switchView('tree');
     qEl.focus();
   }
 });
@@ -1268,8 +2013,10 @@ for (const name of ['onCreated', 'onRemoved', 'onUpdated', 'onMoved', 'onActivat
 }
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
+  if ('wallpaper' in changes) loadWallpaper();
   if (['parents', 'folders', 'ranks', 'settings', 'declined'].some(k => k in changes)) refresh();
   else if (view === 'log') render();
 });
 
+loadWallpaper();
 refresh();

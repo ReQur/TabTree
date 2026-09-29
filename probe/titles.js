@@ -54,17 +54,28 @@ export function cleanTitle(tab, key) {
   return { text: text.trim() || tab.url || '', draft: !!draftPrefix };
 }
 
-export function kindLabel(url = '') {
+// The kind of page a URL shows, in parts: `type` (mr, pipeline, job, build, jira), the `number` as shown
+// (`!42`, `#900`), the merge request's `view` (changes, commits, pipelines) and the whole `label`.
+export function pageKind(url = '') {
+  const kind = (type, word, number, view) => ({
+    type,
+    number,
+    view,
+    label: [word, number].filter(Boolean).join(' ') + (view ? ` · ${view}` : ''),
+  });
   let m;
   if ((m = url.match(/\/merge_requests\/(\d+)(?:\/(diffs|commits|pipelines))?/))) {
-    return `MR !${m[1]}${m[2] ? ` · ${m[2] === 'diffs' ? 'changes' : m[2]}` : ''}`;
+    return kind('mr', 'MR', `!${m[1]}`, m[2] && (m[2] === 'diffs' ? 'changes' : m[2]));
   }
-  if ((m = url.match(/\/pipelines\/(\d+)/))) return `pipeline #${m[1]}`;
-  if ((m = url.match(/\/-\/jobs\/(\d+)/))) return `job #${m[1]}`;
-  if ((m = url.match(/\/job\/[^/]+\/(\d+)(\/|$)/))) return `build #${m[1]}`;
-  if (/\/browse\/[A-Z][A-Z0-9]+-\d+/.test(url)) return 'Jira';
+  if ((m = url.match(/\/pipelines\/(\d+)/))) return kind('pipeline', 'pipeline', `#${m[1]}`);
+  if ((m = url.match(/\/-\/jobs\/(\d+)/))) return kind('job', 'job', `#${m[1]}`);
+  if ((m = url.match(/\/job\/[^/]+\/(\d+)(\/|$)/))) return kind('build', 'build', `#${m[1]}`);
+  if (/\/browse\/[A-Z][A-Z0-9]+-\d+/.test(url)) return kind('jira', 'Jira');
   return null;
 }
+
+// "MR !42 · changes", "pipeline #900", "Jira", or null.
+export const kindLabel = url => pageKind(url)?.label ?? null;
 
 function baseText(tab, key) {
   const { text } = cleanTitle(tab, key);
@@ -98,13 +109,14 @@ function shorten(text, max = 40) {
 
 export const islandName = (key, summary) => `${key} ${shorten(summary)}`;
 
-// A row inside a ticket group shows the page kind instead of repeating the header.
+// A row inside a ticket group shows the page kind instead of repeating the header (`asKind`). `kind` is the
+// page kind in parts (see pageKind), or null.
 export function rowLabel(tab, key, header) {
   const { draft } = cleanTitle(tab, key);
   const text = baseText(tab, key);
-  let kind = kindLabel(tab.url);
-  if (kind && text === header) return { text: kind, kind: null, draft };
+  let kind = pageKind(tab.url);
+  if (kind && text === header) return { text: kind.label, kind: null, draft, asKind: true };
   // Outside a group the Jira favicon already says it.
-  if (header == null && kind === 'Jira') kind = null;
-  return { text, kind, draft };
+  if (header == null && kind?.type === 'jira') kind = null;
+  return { text, kind, draft, asKind: false };
 }
