@@ -20,6 +20,8 @@ export function makeOpera({ tabs: initial = [], groups: initialGroups = [], loca
   const groups = new Map(initialGroups.map(g => [g.id, { windowId: 1, ...g }]));
   let nextGroup = 500;
   let nextTab = 1000;
+  const updates = []; // [tab id, what tabs.update was given]
+  const focused = []; // windows focused
   const snap = id => ({ ...tabs.get(id) });
   const dropIfEmpty = gid => {
     if (gid !== -1 && ![...tabs.values()].some(t => t.groupId === gid)) groups.delete(gid);
@@ -67,6 +69,14 @@ export function makeOpera({ tabs: initial = [], groups: initialGroups = [], loca
         return gid;
       },
       ungroup: async tabIds => tabIds.forEach(id => setGroup(id, -1)),
+      update: async (id, props) => {
+        if (!tabs.has(id)) throw new Error(`No tab with id: ${id}`);
+        const tab = tabs.get(id);
+        updates.push([id, props]);
+        if (props.url) tab.url = props.url;
+        if (props.active) for (const t of tabs.values()) t.active = t.id === id || (t.active && t.windowId !== tab.windowId);
+        return snap(id);
+      },
       // As Opera does, a tab made by an extension gets the tab in view as its opener, whatever it was asked for.
       create: async ({ url, active = true } = {}) => {
         const id = nextTab++;
@@ -102,7 +112,8 @@ export function makeOpera({ tabs: initial = [], groups: initialGroups = [], loca
       clear: async name => alarms.delete(name),
       onAlarm: on('alarm'),
     },
-    webNavigation: { onCreatedNavigationTarget: on('navTarget') },
+    webNavigation: { onCreatedNavigationTarget: on('navTarget'), onCommitted: on('committed') },
+    windows: { update: async (id, props) => void focused.push([id, props]) },
     runtime: { onInstalled: on('installed'), onStartup: on('startup'), onMessage: on('message') },
   };
   globalThis.chrome = chrome;
@@ -123,5 +134,5 @@ export function makeOpera({ tabs: initial = [], groups: initialGroups = [], loca
     granted.delete(origin);
     listeners.permissionsRemoved?.({ origins: [origin] });
   };
-  return { chrome, listeners, tabs, groups, local, session, alarms, open, close, ask, setGroup, grant, revoke };
+  return { chrome, listeners, tabs, groups, local, session, alarms, updates, focused, open, close, ask, setGroup, grant, revoke };
 }

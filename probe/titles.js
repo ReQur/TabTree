@@ -74,6 +74,34 @@ export function pageKind(url = '') {
   return null;
 }
 
+// What page a URL shows, to find it among the open tabs: a GitLab merge request, pipeline or job whatever part of it is
+// in view (/diffs, /commits…), a Jira issue, a Jenkins build; any other page by its address without the #fragment.
+export function pageIdentity(url = '') {
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    return url;
+  }
+  const gitlab = u.pathname.match(/^\/(.+?)\/-\/(merge_requests|pipelines|jobs)\/(\d+)/);
+  if (gitlab) return `${u.origin}/${gitlab[1]}/-/${gitlab[2]}/${gitlab[3]}`;
+  const jira = u.pathname.match(/^\/browse\/([A-Z][A-Z0-9]+-\d+)/);
+  if (jira) return `${u.origin}/browse/${jira[1]}`;
+  const build = u.pathname.match(/^(.*?(?:\/job\/[^/]+)+)\/(\d+)(?:\/|$)/);
+  if (build) return `${u.origin}${build[1]}/${build[2]}/`;
+  return url.split('#')[0];
+}
+
+// The open tab to show a page in, instead of a new copy: one at the same address (without the #fragment), else one
+// showing the same page (pageIdentity); the most recently used of them. Web pages outside incognito only.
+export function tabToReuse(url, tabs, except) {
+  const web = tabs.filter(t => t.id !== except && !t.incognito && /^https?:/.test(t.url || ''));
+  const recent = list => list.sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0))[0] ?? null;
+  const address = url.split('#')[0];
+  const page = pageIdentity(url);
+  return recent(web.filter(t => t.url.split('#')[0] === address)) ?? recent(web.filter(t => pageIdentity(t.url) === page));
+}
+
 // "MR !42 · changes", "pipeline #900", "Jira", or null.
 export const kindLabel = url => pageKind(url)?.label ?? null;
 

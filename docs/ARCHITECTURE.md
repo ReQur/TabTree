@@ -27,7 +27,8 @@ Opera: tabs, islands (tab groups), workspaces
   - Keeps the event log.
 - `tree.js`: pure. `buildTree()` turns tabs + stored placements into the tree, including the ticket rules, the
   order and the cycle guards.
-- `titles.js`: pure. Ticket keys, title cleanup, page kinds, row labels, folder names and colors for tickets.
+- `titles.js`: pure. Ticket keys, title cleanup, page kinds, row labels, folder names and colors for tickets, and
+  which open tab shows a page (`pageIdentity()`, `tabToReuse()`).
 - `snapshot.js`: pure. Snapshot format and matching restored tabs back to it.
 - `panel.html` / `panel.css` / `panel.js`: the UI.
   - Reads tabs and storage, draws the tree, handles search, selection, menus and drag and drop.
@@ -55,7 +56,7 @@ No build step and no runtime dependencies. `package.json` exists only for the te
 | `parents` | `{ [tabId]: number \| "f:<folderId>" \| -1 }` | where a tab is placed: under a tab, straight in a folder, or on the top level by hand. Written when a tab opens (its opener) and by drag and drop. Ignored for a ticket's non-root pages, which always hang under the ticket's root. |
 | `folders` | `{ [id]: { name, color, parent: id \| null, created, key?, auto? } }` | folder ids are stable across restarts (base36 time + random). `key` = the ticket a family folder was made for; `auto` = made automatically (dropped on rename). |
 | `ranks` | `{ ["t:<tabId>" \| "f:<folderId>"]: number }` | order among siblings, written for a whole sibling list at a time by drops and new folders. Unranked siblings go after ranked ones. |
-| `settings` | `{ autoFolders?: bool, mirrorIslands?: bool, onboarded?: bool, setup?: { pin?, tabs?, islands?: bool } }` | the Settings switches (missing = on), written by the panel. `onboarded` = the setup guide was dismissed with Got it; `setup` = its steps ticked by hand. |
+| `settings` | `{ autoFolders?: bool, mirrorIslands?: bool, reuseTabs?: bool, statuses?: bool, dimFinished?: bool, markChanged?: bool, onboarded?: bool, setup?: { pin?, tabs?, islands?: bool } }` | the Settings switches (missing = on), written by the panel. `onboarded` = the setup guide was dismissed with Got it; `setup` = its steps ticked by hand. |
 | `wallpaper` | `{ source: "file" \| "none", name, dataUrl, width, height, w, h, bytes, tones: { vivid, dark, mean }, x, dim, blur, accent: "blue" \| "wallpaper" }` | the picture behind the panel with its settings (Settings › Background), written by the panel. `width`/`height` are the file's size, `w`/`h` and `bytes` the stored JPEG's; `tones` are `[r, g, b]` colors from `tonesOf()`; `x` (0–100), `dim` (0–100), `blur` (px). `source: "none"` keeps the picture but doesn't draw it. A key of its own, so that a slider's change reloads no tree (see The wallpaper). |
 | `declined` | `{ [ticketKey]: true }` | tickets never to get an automatic folder again. Shown in Settings › Never for; `allowAutoFolder` removes one. |
 | `apiProbe` | `{ [site base]: { kind, origin, t, results: [{ name, ok, text }] } }` | the background's last answers of the statuses probe, for Settings and the report. Written by the background. |
@@ -183,6 +184,7 @@ slow site can't hold up a drop. Their reply carries the answer.
 |---|---|
 | `tabs.onCreated` | record `parents[tab] = openerTabId`, except for tabs born on an internal URL (Ctrl+T, start page, `opera://…`: Opera gives those the active tab as opener). Save, tidy, log. |
 | `webNavigation.onCreatedNavigationTarget` | fallback opener for `rel=noopener` links, without overwriting. |
+| `webNavigation.onCommitted` | the first main-frame commit of a tab created in the last 15 s (`fresh`): logged as `opened` unless it came from a link. When Chromium marks it `start_page` (a page opened from outside the browser, as an address on the command line), the session is older than 30 s (`sid`), and `reuseTabs` is on: `tabToReuse()` finds the tab that shows the same page; it gets the link's URL and comes forward (its window focused), and the new tab closes (`reused` in the log). Without such a tab, the new one goes to the top level. |
 | `tabs.onUpdated` | URL change → save. Ticket key changed (compared with `keyOfTab`) → tidy. `groupId` changed by someone else (not in `ours`) → tidy, which undoes it. Title or favicon change on a background tab → `changes` log. |
 | `tabs.onRemoved` | children get the closed tab's place. If it was a ticket's tab, the ticket's next root (`pickRoot`) inherits the place when it has none. Rank dropped. **Skipped when `isWindowClosing`**, so shutting the browser down doesn't wreck the tree or the snapshot. |
 | `tabs.onReplaced` | move `parents`/`ranks`/`keyOfTab` to the new id (prerendering). |
@@ -388,6 +390,9 @@ A picture behind the panel (Settings › Background), stored under `wallpaper`.
     seconds;
   - Ctrl+T tabs and browser pages get the active tab as opener, which is meaningless.
 - **Other tab fields**: there is also `splitViewId` (Opera's split screen), unused so far.
+- **A page opened from another app** (a link clicked in Claude Code) opens in a new tab whose first navigation
+  `webNavigation.onCommitted` reports as `start_page`, as Chromium does for an address on the command line
+  (verified 2026-09-30). Links inside the browser report `link`.
 - **A tab made by an extension** (`tabs.create`, even with `openerTabId`) gets the tab in view as its opener, as
   a Ctrl+T tab does (seen 2026-09-30: a pipeline opened from a merge request's card landed under the active tab).
   The panel therefore opens tabs through the background's `openTab`, which says where they belong.
@@ -435,7 +440,8 @@ A picture behind the panel (Settings › Background), stored under `wallpaper`.
 
 | file | covers |
 |---|---|
-| `titles.test.js` | keys, title cleanup, page kinds, labels, names |
+| `titles.test.js` | keys, title cleanup, page kinds, labels, names, which open tab shows a page |
+| `reuse.test.js` | links from other apps: the tab that shows the page comes forward at the link's address and the copy closes; links inside the browser, the switch and the first half minute are left alone; a page not open goes to the top level |
 | `tree.test.js` | folders, placements, tickets, order, cycles |
 | `snapshot.test.js` | snapshot and restart matching, redirects, lost parents |
 | `background.test.js` | island migration, mirror, folder commands, ticket heir, mirror off |

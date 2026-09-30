@@ -246,6 +246,23 @@ A right click on a row outside the selection clears the selection and opens that
   copies in that folder. Of each URL, the copy kept is the active one, else the most recently used.
 - Close on the selection bar or in the selection's menu: see Selection and Menus.
 
+## Links from other apps
+
+A page opened from outside the browser (a link clicked in an editor, a chat, Claude Code) that a tab already shows
+doesn't make a copy: that tab comes forward, at the link's address and so reloaded, and the new tab closes.
+
+- **The same page** is the same address (the `#fragment` aside), or the same merge request, pipeline or job of a
+  GitLab project whatever part of it is in view (`/diffs`, `/commits`), the same Jira issue whatever its query, the
+  same Jenkins build. With several, the one used last wins. Tabs of other windows and workspaces count too.
+- **Not open yet:** the new tab stays, and goes to the top level rather than under the tab that happened to be in
+  view.
+- **Links inside the browser** (a click, a middle click, a bookmark) open as always, copies included.
+- **Not in the first half minute** of a browser session (or after the extension reloads), while restored tabs load.
+- **The switch:** Settings › Tree › **Links from other apps** (on by default).
+- It relies on how Chromium marks a page opened from outside: as an address on the command line (`start_page`). The
+  Log shows it for new tabs that weren't opened by a link (`opened #12 as start_page`), and `reused` when a tab was
+  shown instead of a copy.
+
 ## Pinned tabs and other workspaces
 
 - Pinned tabs of the current workspace are the row of tiles above the tree. Click one to open it. The active one is
@@ -319,6 +336,8 @@ switches are on by default.
   - **Auto-folders**: automatic folders for ticket families.
   - **Never for**: the tickets that never get an automatic folder (their folder was deleted, or the family was taken
     out of it). **✕** on a ticket allows it again; if its family qualifies, the folder is made right away.
+  - **Links from other apps**: a page opened from another app goes to the tab that already shows it (see Links from
+    other apps).
 - **Opera**
   - **Islands**: the island mirror.
   - Every top-level folder with its state: `9 tabs · island`, `1 tab · no island, Opera needs 2`,

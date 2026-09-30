@@ -249,9 +249,9 @@ icon and **Copy report**.
 - `This window`, then a grid (`.kv`): Opera, APIs (`✓`/`✗` in `--ok`/muted), Tabs, Workspaces, Folders, Placements,
   Snapshot, and Wallpaper when there is one; values in mono.
 - A segmented switch (`.seg`) **Events** | **Background changes**, each with its count.
-- Events, newest first (`.ev`): the time in mono, a tag tinted with its kind's color (created and link blue, place
-  purple, folder yellow, mirror cyan, closed red, restored green, startup and background changes grey), the text
-  with ids in mono.
+- Events, newest first (`.ev`): the time in mono, a tag tinted with its kind's color (created, link and opened blue,
+  place purple, folder yellow, mirror cyan, closed red, restored and reused green, startup and background changes
+  grey), the text with ids in mono.
 - Copy by hand: a warning banner (`The clipboard refused. The report is selected: press Ctrl+C, then Esc.`) above
   the report in a text area, selected, on `--sel` with an accent outline.
 
@@ -364,7 +364,7 @@ selection bar cuts its description first, and at 300px and less its buttons lose
     (a tick icon when done), `.steps li.done`, `.steps li b`;
   - empty states: `#list .empty h4`, `.empty p`, `.empty button` by text;
   - Settings: `.settings .sub`, `.opt b`, `.opt button`, `#set-auto-folders`, `#set-mirror`, `.chip[data-key] button`,
-    `.chips .muted`, `.islands .il .grow`, `.il .m`, `#set-statuses`, `#set-dim-finished`, `#set-mark-changed`,
+    `.chips .muted`, `.islands .il .grow`, `.il .m`, `#set-reuse-tabs`, `#set-statuses`, `#set-dim-finished`, `#set-mark-changed`,
     `.site[data-site]`, `.site small`, `.site .line > button` by text or `aria-label` (`Connect`, `Sign in`,
     `Retry`, `More for <host>`), `.checks .ctx`, `.check`, `.check.bad`, `.check b`, `.check span`;
   - statuses: a row's `data-ref` and `.stc > *` (`.chg`, `.me`, `.js.<category>`, `.n`, `.opt`, `.ready`, the marks'

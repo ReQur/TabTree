@@ -77,6 +77,10 @@ check(`the islands of the top-level folders: ${islands().join('; ')}`, islands()
 flip('#set-auto-folders');
 await wait(300);
 check('Auto-folders off, without losing the other settings', store.settings.autoFolders === false && store.settings.setup.tabs === false && !$('#set-auto-folders').checked);
+check('links from other apps go to their open tab, unless switched off', $('#set-reuse-tabs').checked);
+flip('#set-reuse-tabs');
+await wait(300);
+check('switched off', store.settings.reuseTabs === false && !$('#set-reuse-tabs').checked);
 flip('#set-mirror');
 await wait(300);
 check(`Islands off: ${islands()[0]}`, store.settings.mirrorIslands === false && islands()[0] === 'Release: 2 tabs · islands are off');

@@ -1,6 +1,6 @@
 // Logs tab events, remembers which tab opened which, keeps the tree and its folders across restarts, puts
 // ticket families into folders, and mirrors top-level folders as Opera islands.
-import { hostOf, ticketKey, colorFor, islandName } from './titles.js';
+import { hostOf, ticketKey, colorFor, islandName, tabToReuse } from './titles.js';
 import { buildTree, tabIdsUnder, pickRoot, nodeRef, folderRef } from './tree.js';
 import { snapshotOf, matchTabs, restoredParents, restoredRanks } from './snapshot.js';
 import { probeSite, detectSites, pollSites, originPattern, forgetChanges, STATUS_FORMAT } from './integrations.js';
@@ -535,6 +535,8 @@ keepWatching();
 
 chrome.tabs.onCreated.addListener(async tab => {
   const t = Date.now();
+  fresh.set(tab.id, t);
+  setTimeout(() => fresh.delete(tab.id), FRESH_MS);
   const internal = INTERNAL.test(tab.pendingUrl || tab.url || '');
   const planned = placing.get(tab.pendingUrl || tab.url);
   if (planned != null) {
@@ -557,6 +559,36 @@ chrome.tabs.onCreated.addListener(async tab => {
     active: tab.active,
     host: hostOf(tab.pendingUrl || tab.url),
   });
+});
+
+// ---- links from other apps ----
+// A page opened from outside the browser (an editor, a chat, Claude Code) that some tab already shows: that tab shows
+// it, and the new copy closes. Chromium marks such a tab's first navigation "start_page", as for an address on the
+// command line. Only for tabs a few seconds old, and not in the first half minute of a session, when restored tabs
+// load.
+const fresh = new Map(); // tab id -> when it was created
+const FRESH_MS = 15_000;
+const BOOT_MS = 30_000;
+
+chrome.webNavigation.onCommitted.addListener(async d => {
+  if (d.frameId !== 0 || !fresh.has(d.tabId)) return;
+  fresh.delete(d.tabId);
+  if (!/^https?:/.test(d.url)) return;
+  const from = { ev: 'opened', id: d.tabId, transition: d.transitionType, qualifiers: (d.transitionQualifiers ?? []).join('+'), host: hostOf(d.url) };
+  // Tabs opened by a link inside the browser are the usual case, and stay out of the log.
+  if (d.transitionType !== 'link') record('log', from);
+  if (d.transitionType !== 'start_page') return;
+  const [{ sid }, { settings = {} }] = await Promise.all([chrome.storage.session.get('sid'), chrome.storage.local.get('settings')]);
+  if (settings.reuseTabs === false || !sid || Date.now() - sid < BOOT_MS) return;
+  const tab = await chrome.tabs.get(d.tabId).catch(() => null);
+  if (!tab || tab.incognito) return;
+  const target = tabToReuse(d.url, await chrome.tabs.query({}), d.tabId);
+  // Not open yet: it came from outside, so it goes to the top level rather than under the tab in view.
+  if (!target) return setParent(d.tabId, -1);
+  await chrome.tabs.update(target.id, { active: true, url: d.url });
+  await chrome.windows?.update(target.windowId, { focused: true }).catch(() => {});
+  await chrome.tabs.remove(d.tabId).catch(() => {});
+  record('log', { ev: 'reused', id: target.id, closed: d.tabId, host: hostOf(d.url) });
 });
 
 chrome.webNavigation.onCreatedNavigationTarget.addListener(async d => {

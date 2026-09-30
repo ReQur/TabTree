@@ -1386,6 +1386,8 @@ function renderSettings() {
   }
   option('Auto-folders', 'A ticket family on the top level gets a folder of its own once it has a second tab.',
     toggleBox('set-auto-folders', settings.autoFolders !== false, on => setSetting('autoFolders', on)), chips);
+  option('Links from other apps', 'A page opened from another app (an editor, a chat, Claude Code) goes to the tab that already shows it, reloaded, instead of opening a copy. Links inside the browser open as always.',
+    toggleBox('set-reuse-tabs', settings.reuseTabs !== false, on => setSetting('reuseTabs', on)));
 
   section('Opera');
   const mirrorOn = islandsOn();
@@ -1965,6 +1967,10 @@ function fmtEvent(e) {
       return `${ts} created #${e.id} idx=${e.index} opener=${e.opener ?? '—'}${e.openerHost ? ` (${e.openerHost})` : ''} group=${e.groupId ?? '—'}${e.active ? ' active' : ''} → ${e.host || '?'}`;
     case 'navTarget':
       return `${ts} navTarget #${e.id} source=#${e.source} (${e.sourceHost ?? '?'}) → ${e.host || '?'}`;
+    case 'opened':
+      return `${ts} opened #${e.id} as ${e.transition}${e.qualifiers ? ` (${e.qualifiers})` : ''} → ${e.host || '?'}`;
+    case 'reused':
+      return `${ts} reused #${e.id} for a link from another app, closed #${e.closed} → ${e.host || '?'}`;
     case 'place':
       return `${ts} place ${e.node} under ${e.parent}`;
     case 'folder':
@@ -2052,6 +2058,7 @@ const EVENT_TAGS = {
   created: ['created', 'blue'], navTarget: ['link', 'blue'], place: ['place', 'purple'], folder: ['folder', 'yellow'],
   migrated: ['folder', 'yellow'], mirror: ['mirror', 'cyan'], closed: ['closed', 'red'], restored: ['restored', 'green'],
   title: ['title', 'grey'], favicon: ['favicon', 'grey'], installed: ['installed', 'grey'],
+  opened: ['opened', 'blue'], reused: ['reused', 'green'],
 };
 let logTab = 'events'; // or 'changes'
 
@@ -2063,6 +2070,10 @@ function eventWords(e) {
       return [code(`#${e.id}`), ...(e.opener != null ? [' from ', code(`#${e.opener}`), e.openerHost ? ` ${e.openerHost}` : ''] : []), ` → ${e.host || '?'}`];
     case 'navTarget':
       return [code(`#${e.id}`), ' from ', code(`#${e.source}`), ` ${e.sourceHost ?? '?'} → ${e.host || '?'}`];
+    case 'opened':
+      return [code(`#${e.id}`), ` as ${e.transition}${e.qualifiers ? ` (${e.qualifiers})` : ''} → ${e.host || '?'}`];
+    case 'reused':
+      return [code(`#${e.id}`), ' for a link from another app, closed ', code(`#${e.closed}`), ` → ${e.host || '?'}`];
     case 'place':
       return [code(e.node), ' under ', code(e.parent)];
     case 'folder':
