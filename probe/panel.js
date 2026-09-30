@@ -86,6 +86,7 @@ async function load() {
   folders = stored.folders ?? {};
   ranks = stored.ranks ?? {};
   settings = stored.settings ?? {};
+  applyTextSize();
   declined = stored.declined ?? {};
   apiProbe = stored.apiProbe ?? {};
   status = stored.status ?? {};
@@ -134,6 +135,19 @@ async function send(msg) {
   if (!res?.ok) toast(`${msg.type} failed: ${res?.error ?? 'no answer'}`, { error: true });
   return res;
 }
+
+// Settings › Text size: the whole panel is drawn larger or smaller from its 12px text, as page zoom does, so that
+// icons, rows and bars keep their proportions. Positions measured on screen are divided by it before they go into
+// a style, which the zoom multiplies again.
+const TEXT_SIZES = [10, 11, 12, 13, 14, 15];
+const textSize = () => (TEXT_SIZES.includes(settings.textSize) ? settings.textSize : 12);
+
+function applyTextSize() {
+  if (textSize() === 12) document.body.style.removeProperty('--ui-zoom');
+  else document.body.style.setProperty('--ui-zoom', String(textSize() / 12));
+}
+
+const uiZoom = () => parseFloat(document.body.style.getPropertyValue('--ui-zoom')) || 1;
 
 // Writes one setting; `value` may be a function of the stored one. Writes are queued, so that quick clicks don't
 // overwrite each other's changes.
@@ -421,13 +435,17 @@ function openMenu(items, at, ref = null) {
     menuEl.append(item.colors ? swatches(item) : menuItem(item));
   }
   menuEl.hidden = false;
-  const { width = 0, height = 0 } = menuEl.getBoundingClientRect();
+  const zoom = uiZoom();
   const W = document.documentElement.clientWidth;
   const H = document.documentElement.clientHeight;
+  // A menu wider than the panel (large text in a narrow panel) is narrowed to fit.
+  menuEl.style.width = '';
+  if (W && menuEl.getBoundingClientRect().width > W - 8) menuEl.style.width = `${(W - 8) / zoom}px`;
+  const { width = 0, height = 0 } = menuEl.getBoundingClientRect();
   const x = (at.x ?? 0) - (at.alignRight ? width : 0);
   const y = at.y ?? 0;
-  menuEl.style.left = `${Math.max(4, Math.min(x, W - width - 4))}px`;
-  menuEl.style.top = `${y + height > H - 4 ? Math.max(4, (at.above ?? y) - height) : y}px`;
+  menuEl.style.left = `${Math.max(4, Math.min(x, W - width - 4)) / zoom}px`;
+  menuEl.style.top = `${(y + height > H - 4 ? Math.max(4, (at.above ?? y) - height) : y) / zoom}px`;
   menuEl.querySelector('button')?.focus();
 }
 
@@ -1361,6 +1379,25 @@ function renderSettings() {
   section('Background');
   out.append(backgroundSettings());
 
+  section('Text');
+  const sizes = el('div', 'seg');
+  sizes.setAttribute('role', 'radiogroup');
+  sizes.setAttribute('aria-label', 'Text size');
+  for (const size of TEXT_SIZES) {
+    const on = size === textSize();
+    const b = button(on ? 'on' : '', String(size), `${size}px${size === 12 ? ', as it was designed' : ''}`, () => {
+      settings = { ...settings, textSize: size };
+      applyTextSize();
+      setSetting('textSize', size);
+      render();
+    });
+    b.dataset.size = String(size);
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(on));
+    sizes.append(b);
+  }
+  option('Text size', 'In pixels, 12 as designed. Icons, rows and bars follow it, so a smaller size fits more into a narrow panel.', el('span'), sizes);
+
   section('Statuses');
   option('Show statuses', "Tickets, merge requests, pipelines and builds of your open tabs, read with your browser's sign-in. Nothing leaves the browser.",
     toggleBox('set-statuses', settings.statuses !== false, on => setSetting('statuses', on)));
@@ -1716,20 +1753,23 @@ function cardView(m, tab) {
 
 // Under the status, its right edge near the status's; above it when there is no room below.
 function placeCard(box, anchor) {
+  const zoom = uiZoom();
   const a = anchor.getBoundingClientRect();
   const W = document.documentElement.clientWidth || 420;
   const H = document.documentElement.clientHeight || 900;
+  // A card wider than the panel (large text in a narrow panel) is narrowed to fit.
+  if (box.getBoundingClientRect().width > W - 16) box.style.width = `${(W - 16) / zoom}px`;
   const { width = 300, height = 0 } = box.getBoundingClientRect();
   const w = width || 300;
   const right = a.right ?? (a.left ?? 0) + (a.width ?? 0);
   const left = Math.max(8, Math.min(right + 4 - w, W - w - 8));
   const bottom = (a.top ?? 0) + (a.height ?? 0);
   const above = height > 0 && bottom + 6 + height > H - 8 && (a.top ?? 0) - 6 - height > 8;
-  box.style.left = `${left}px`;
-  box.style.top = `${above ? (a.top ?? 0) - 6 - height : bottom + 6}px`;
+  box.style.left = `${left / zoom}px`;
+  box.style.top = `${(above ? (a.top ?? 0) - 6 - height : bottom + 6) / zoom}px`;
   box.classList.toggle('above', above);
   const center = ((a.left ?? right) + right) / 2;
-  box.querySelector('.caret').style.left = `${Math.max(8, Math.min(w - 18, center - left - 5))}px`;
+  box.querySelector('.caret').style.left = `${Math.max(8, Math.min(w - 18, center - left - 5)) / zoom}px`;
 }
 
 // The tree is redrawn often (a tab in the background changes its title), so the card finds its row again.

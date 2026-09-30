@@ -209,7 +209,7 @@ const site = host => $(`.site[data-site="https://${host}"]`);
 const state = host => site(host).querySelector('small').textContent;
 const actions = host => [...site(host).querySelectorAll('.line > button')].map(b => b.getAttribute('aria-label') ?? b.textContent);
 check(`the section and its switches: ${all('.settings .sub').map(e => e.textContent)}`,
-  all('.settings .sub')[1]?.textContent === 'Statuses' && $('#set-statuses').checked && !$('#set-dim-finished').checked && !$('#set-mark-changed').checked);
+  all('.settings .sub')[2]?.textContent === 'Statuses' && $('#set-statuses').checked && !$('#set-dim-finished').checked && !$('#set-mark-changed').checked);
 check(`a site that answers: «${state('jira.example.com')}» ${actions('jira.example.com')}`, /^Connected · checked 1\d s ago · 2 tickets$/.test(state('jira.example.com')) && actions('jira.example.com').join() === 'More for jira.example.com');
 check(`a site that signed out: «${state('gitlab.example.com')}» ${actions('gitlab.example.com')}`,
   /^Signed out · last known \d\d:\d\d:\d\d$/.test(state('gitlab.example.com')) && actions('gitlab.example.com').join() === 'Sign in,More for gitlab.example.com');

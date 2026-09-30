@@ -263,8 +263,11 @@ icon and **Copy report**.
   the report in a text area, selected, on `--sel` with an accent outline.
 
 **Settings view** (`.settings`, under the bar):
-- Section labels (`.sub`): **Background**, **Statuses**, **Tree**, **Opera** (the browser's name: **Chrome**, **Edge**),
-  **Backup**, **Diagnostics**, **Setup**.
+- Section labels (`.sub`): **Background**, **Text**, **Statuses**, **Tree**, **Opera** (the browser's name: **Chrome**,
+  **Edge**), **Backup**, **Diagnostics**, **Setup**.
+- Text: **Text size**, a segmented switch under its description (`.opt .seg`, radios `10`…`15`). A size other than 12
+  sets `--ui-zoom` (size ÷ 12) on `body`, whose `zoom` draws the whole panel at it; the menu and the details card are
+  placed from measured positions divided by it, and narrowed to the panel when they would be wider.
 - Options (`.opt`): a bold name (a label for switches), a muted description, and on the right a switch
   (`input.switch`, 30×18, accent when on) or a small button.
 - **Never for**: chips (`.chip`) with the key and a ✕ button, inside the Auto-folders option.
@@ -374,7 +377,8 @@ selection bar cuts its description first, and at 300px and less its buttons lose
     (a tick icon when done), `.steps li.done`, `.steps li b`;
   - empty states: `#list .empty h4`, `.empty p`, `.empty button` by text;
   - Settings: `.settings .sub`, `.opt b`, `.opt button`, `#set-auto-folders`, `#set-mirror`, `.chip[data-key] button`,
-    `.chips .muted`, `.islands .il .grow`, `.il .m`, `#set-reuse-tabs`, `#set-statuses`, `#set-dim-finished`, `#set-mark-changed`,
+    `.chips .muted`, `.islands .il .grow`, `.il .m`, `.seg[aria-label="Text size"] button` (`data-size`, `.on`),
+    `body`'s `--ui-zoom`, `#set-reuse-tabs`, `#set-statuses`, `#set-dim-finished`, `#set-mark-changed`,
     `.site[data-site]`, `.site small`, `.site .line > button` by text or `aria-label` (`Connect`, `Sign in`,
     `Retry`, `More for <host>`), `.checks .ctx`, `.check`, `.check.bad`, `.check b`, `.check span`;
   - statuses: a row's `data-ref` and `.stc > *` (`.chg`, `.me`, `.js.<category>`, `.n`, `.opt`, `.ready`, the marks'

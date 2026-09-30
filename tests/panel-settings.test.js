@@ -64,7 +64,7 @@ check('two quick clicks tick both steps', store.settings.setup.pin === true && s
 check('"Later" hides the guide without remembering it', !$('.card') && store.settings.onboarded === undefined);
 
 view('settings');
-check(`Settings: ${texts('.settings .sub')}`, texts('.settings .sub').join() === 'Background,Statuses,Tree,Opera,Backup,Diagnostics,Setup' && shown() === 'settings' && !$('.card') && $('#hdr').hidden && $('#view-title').textContent === 'Settings');
+check(`Settings: ${texts('.settings .sub')}`, texts('.settings .sub').join() === 'Background,Text,Statuses,Tree,Opera,Backup,Diagnostics,Setup' && shown() === 'settings' && !$('.card') && $('#hdr').hidden && $('#view-title').textContent === 'Settings');
 check('both switches are on by default', $('#set-auto-folders').checked && $('#set-mirror').checked);
 check(`tickets kept out of automatic folders, sorted: ${texts('.chip')}`, texts('.chips .muted').join() === 'Never for' && all('.chip').map(c => c.dataset.key).join() === 'ABC-1,PROJ-77');
 const allow = $('.chip[data-key="PROJ-77"] button');
@@ -77,6 +77,17 @@ check(`the islands of the top-level folders: ${islands().join('; ')}`, islands()
 flip('#set-auto-folders');
 await wait(300);
 check('Auto-folders off, without losing the other settings', store.settings.autoFolders === false && store.settings.setup.tabs === false && !$('#set-auto-folders').checked);
+const sizes = () => [...p.w.document.querySelectorAll('.seg[aria-label="Text size"] button')];
+check(`text size: ${sizes().map(b => b.textContent)}, 12 at first`, sizes().map(b => b.textContent).join() === '10,11,12,13,14,15'
+  && sizes().find(b => b.classList.contains('on'))?.dataset.size === '12' && !p.w.document.body.style.getPropertyValue('--ui-zoom'));
+sizes().find(b => b.dataset.size === '14').click();
+await wait(300);
+check(`a size draws the whole panel at it, from 12px: zoom ${p.w.document.body.style.getPropertyValue('--ui-zoom')}`,
+  store.settings.textSize === 14 && Math.abs(parseFloat(p.w.document.body.style.getPropertyValue('--ui-zoom')) - 14 / 12) < 1e-9
+  && sizes().find(b => b.classList.contains('on'))?.dataset.size === '14');
+sizes().find(b => b.dataset.size === '12').click();
+await wait(300);
+check('back at 12: no zoom', store.settings.textSize === 12 && !p.w.document.body.style.getPropertyValue('--ui-zoom'));
 check('links from other apps go to their open tab, unless switched off', $('#set-reuse-tabs').checked);
 flip('#set-reuse-tabs');
 await wait(300);

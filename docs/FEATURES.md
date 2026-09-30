@@ -373,6 +373,8 @@ switches are on by default.
   - **Accent**: **Blue**, or **From wallpaper**: the picture's most frequent strong color, made readable on the veil.
     A picture without a strong color keeps blue.
   - Every panel (one per window) shows the same picture, and follows a change made in another one.
+- **Text size**: 10 to 15 pixels, 12 at first. The whole panel is drawn at that size, as page zoom would: text, icons,
+  rows, bars and menus. A smaller size fits more into a narrow panel.
 - **Tree**
   - **Auto-folders**: automatic folders for ticket families.
   - **Never for**: the tickets that never get an automatic folder (their folder was deleted, or the family was taken
@@ -541,6 +543,8 @@ In Edge:
 
 ## Limitations and known gaps
 
+- **The panel's narrowest width** is the browser's: an extension can't make its sidebar panel narrower (no manifest
+  key, no API). A smaller **Text size** fits more into it.
 - **Opera's own tab strip** can only be collapsed, not removed, and the extension can't open its panel by itself.
   Chrome's and Edge's can't be hidden by an extension either. Edge's sidebar, and so the panel, stays on the right.
 - **Full-screen video**: a pinned panel stays on screen next to a video in full screen. This is how Opera treats

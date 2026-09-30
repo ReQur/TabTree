@@ -36,7 +36,7 @@ check('no other workspaces', !$('#list .section') && !$('.badge.ws'));
 
 $('#open-settings').click();
 await wait(50);
-check(`Settings: ${texts('.settings .sub')}`, texts('.settings .sub').join() === 'Background,Statuses,Tree,Chrome,Backup,Diagnostics,Setup');
+check(`Settings: ${texts('.settings .sub')}`, texts('.settings .sub').join() === 'Background,Text,Statuses,Tree,Chrome,Backup,Diagnostics,Setup');
 const option = name => all('.opt').find(o => o.querySelector('b').textContent === name);
 check('the mirror is called Tab groups', option('Tab groups')?.querySelector('p').textContent.startsWith("Every top-level folder with two or more tabs is a tab group in Chrome's tab strip."));
 const groups = all('.islands .il').map(li => `${li.querySelector('.grow').textContent}: ${li.querySelector('.m').textContent}`);
