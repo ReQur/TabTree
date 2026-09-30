@@ -37,7 +37,7 @@ Branchy shows your tabs as a tree in the browser's side panel, the way an IDE sh
 
 Privacy: everything stays in your browser. Branchy has no server, collects no analytics and sends nothing to anyone. Statuses are read only from the sites you connect. Privacy policy: https://github.com/ReQur/TabTree/blob/main/PRIVACY.md
 
-Works in Chrome, Edge and Opera. Source code: https://github.com/ReQur/TabTree
+Works in Chrome, Edge and Opera. Open source (MIT): https://github.com/ReQur/TabTree
 ```
 
 ## Chrome Web Store: Privacy practices

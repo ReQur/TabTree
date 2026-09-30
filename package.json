@@ -1,6 +1,7 @@
 {
   "name": "branchy",
   "private": true,
+  "license": "MIT",
   "description": "Opera, Chrome and Edge extension: tabs as a tree in the sidebar. The extension itself is in probe/ and needs no build; npm run pack makes the store packages.",
   "type": "module",
   "scripts": {

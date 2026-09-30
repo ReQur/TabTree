@@ -64,3 +64,7 @@ same files, each with its browser's manifest.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how it works, stored data, the Opera facts it relies on.
 - [docs/UI.md](docs/UI.md): the panel's UI, its states, and what a redesign has to keep.
 - [CLAUDE.md](CLAUDE.md): notes for AI coding sessions.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
