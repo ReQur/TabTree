@@ -64,7 +64,7 @@ check('two quick clicks tick both steps', store.settings.setup.pin === true && s
 check('"Later" hides the guide without remembering it', !$('.card') && store.settings.onboarded === undefined);
 
 view('settings');
-check(`Settings: ${texts('.settings .sub')}`, texts('.settings .sub').join() === 'Background,Statuses,Tree,Opera,Diagnostics,Setup' && shown() === 'settings' && !$('.card') && $('#hdr').hidden && $('#view-title').textContent === 'Settings');
+check(`Settings: ${texts('.settings .sub')}`, texts('.settings .sub').join() === 'Background,Statuses,Tree,Opera,Backup,Diagnostics,Setup' && shown() === 'settings' && !$('.card') && $('#hdr').hidden && $('#view-title').textContent === 'Settings');
 check('both switches are on by default', $('#set-auto-folders').checked && $('#set-mirror').checked);
 check(`tickets kept out of automatic folders, sorted: ${texts('.chip')}`, texts('.chips .muted').join() === 'Never for' && all('.chip').map(c => c.dataset.key).join() === 'ABC-1,PROJ-77');
 const allow = $('.chip[data-key="PROJ-77"] button');

@@ -5,18 +5,18 @@ What the extension does from the user's side is in [FEATURES.md](FEATURES.md). T
 ## Pieces
 
 ```
-Opera: tabs, islands (tab groups), workspaces
+Opera, Chrome or Edge: tabs, islands (tab groups), Opera's workspaces
         │  tab events                          ▲ tabs.group / ungroup, tabGroups.update
         ▼                                      │
   probe/background.js  (MV3 service worker) ───┘
         │  owns every write to the tree        ▲ commands: place, newFolder, …  (runtime.sendMessage)
         ▼                                      │
-  chrome.storage.local  ──── onChanged ───▶  probe/panel.js  (the sidebar page: a view)
+  chrome.storage.local  ──── onChanged ───▶  probe/panel.js  (the sidebar or side panel page: a view)
 ```
 
-- `manifest.json`: MV3. Declares `sidebar_action` (Opera's own sidebar API; Opera has no `chrome.sidePanel`), a
-  module service worker, and the permissions `tabs`, `webNavigation`, `storage`, `tabGroups`, `clipboardWrite`,
-  `alarms`.
+- `manifest.json`: MV3, Opera's. Declares `sidebar_action` (Opera's own sidebar API; Opera has no `chrome.sidePanel`),
+  a module service worker, and the permissions `tabs`, `webNavigation`, `storage`, `tabGroups`, `clipboardWrite`,
+  `alarms`. Chrome and Edge get a manifest of their own made from it (see Packages for the stores).
   `optional_host_permissions` (`https://*/*`, `http://*/*`) grants nothing by itself: Settings › Statuses asks
   Opera for one site's origin at a time, so no work host is ever written into the repo.
 - `background.js`: the only writer of the tree.
@@ -30,6 +30,9 @@ Opera: tabs, islands (tab groups), workspaces
 - `titles.js`: pure. Ticket keys, title cleanup, page kinds, row labels, folder names and colors for tickets, and
   which open tab shows a page (`pageIdentity()`, `tabToReuse()`).
 - `snapshot.js`: pure. Snapshot format and matching restored tabs back to it.
+- `backup.js`: pure. The backup file: `backupOf()` writes it, `readBackup()` checks one (see Backups).
+- `browser.js`: pure. `browserOf(userAgent, opr)`: Opera, Chrome or Edge, with the words the panel uses there
+  (island or tab group), whether it has workspaces, its setup steps, and where its version is in the user agent.
 - `panel.html` / `panel.css` / `panel.js`: the UI.
   - Reads tabs and storage, draws the tree, handles search, selection, menus and drag and drop.
   - Turns every change into a command for the background. It never writes the tree itself; it writes only
@@ -45,7 +48,8 @@ Opera: tabs, islands (tab groups), workspaces
   `statusLines()` read what the watch keeps about a tab. Pure apart from `fetch`, which the tests pass in.
 - `icons/`: generated PNGs (16, 32, 48, 128), the extension's own icon.
 
-No build step and no runtime dependencies. `package.json` exists only for the tests (jsdom).
+No build step and no runtime dependencies: `probe/` is loaded as it is. `package.json` is for the tests (jsdom) and
+for `npm run pack`, which copies `probe/` and writes each browser's manifest (see Packages for the stores).
 
 ## Stored data
 
@@ -56,8 +60,8 @@ No build step and no runtime dependencies. `package.json` exists only for the te
 | `parents` | `{ [tabId]: number \| "f:<folderId>" \| -1 }` | where a tab is placed: under a tab, straight in a folder, or on the top level by hand. Written when a tab opens (its opener) and by drag and drop. Ignored for a ticket's non-root pages, which always hang under the ticket's root. |
 | `folders` | `{ [id]: { name, color, parent: id \| null, created, key?, auto? } }` | folder ids are stable across restarts (base36 time + random). `key` = the ticket a family folder was made for; `auto` = made automatically (dropped on rename). |
 | `ranks` | `{ ["t:<tabId>" \| "f:<folderId>"]: number }` | order among siblings, written for a whole sibling list at a time by drops and new folders. Unranked siblings go after ranked ones. |
-| `settings` | `{ autoFolders?: bool, mirrorIslands?: bool, reuseTabs?: bool, statuses?: bool, dimFinished?: bool, markChanged?: bool, onboarded?: bool, setup?: { pin?, tabs?, islands?: bool } }` | the Settings switches (missing = on), written by the panel. `onboarded` = the setup guide was dismissed with Got it; `setup` = its steps ticked by hand. |
-| `wallpaper` | `{ source: "file" \| "none", name, dataUrl, width, height, w, h, bytes, tones: { vivid, dark, mean }, x, dim, blur, accent: "blue" \| "wallpaper" }` | the picture behind the panel with its settings (Settings › Background), written by the panel. `width`/`height` are the file's size, `w`/`h` and `bytes` the stored JPEG's; `tones` are `[r, g, b]` colors from `tonesOf()`; `x` (0–100), `dim` (0–100), `blur` (px). `source: "none"` keeps the picture but doesn't draw it. A key of its own, so that a slider's change reloads no tree (see The wallpaper). |
+| `settings` | `{ autoFolders?: bool, mirrorIslands?: bool, reuseTabs?: bool, statuses?: bool, dimFinished?: bool, markChanged?: bool, onboarded?: bool, setup?: { pin?, tabs?, islands?, left?: bool } }` | the Settings switches (missing = on), written by the panel, and by `importTree`. `onboarded` = the setup guide was dismissed with Got it; `setup` = its steps ticked by hand, by the ids in browser.js (`pin`, `tabs`, `islands` in Opera; `pin`, `left` in Chrome; `pin`, `tabs` in Edge). `mirrorIslands` stands for tab groups too. |
+| `wallpaper` | `{ source: "file" \| "none", name, dataUrl, width, height, w, h, bytes, tones: { vivid, dark, mean }, x, dim, blur, accent: "blue" \| "wallpaper" }` | the picture behind the panel with its settings (Settings › Background), written by the panel, and by `importTree`. `width`/`height` are the file's size, `w`/`h` and `bytes` the stored JPEG's; `tones` are `[r, g, b]` colors from `tonesOf()`; `x` (0–100), `dim` (0–100), `blur` (px). `source: "none"` keeps the picture but doesn't draw it. A key of its own, so that a slider's change reloads no tree (see The wallpaper). |
 | `declined` | `{ [ticketKey]: true }` | tickets never to get an automatic folder again. Shown in Settings › Never for; `allowAutoFolder` removes one. |
 | `apiProbe` | `{ [site base]: { kind, origin, t, results: [{ name, ok, text }] } }` | the background's last answers of the statuses probe, for Settings and the report. Written by the background. |
 | `status` | `{ sites: { [base]: { kind, ok, error? } }, tickets, mrs, pipelines, jobs, builds, projects }` | what the watch keeps (see The statuses watch). Written by the background, only when something changed. |
@@ -69,7 +73,7 @@ No build step and no runtime dependencies. `package.json` exists only for the te
 | key | meaning |
 |---|---|
 | `sid` | set by the first worker of a session. When it is missing, the worker restores the tree. |
-| `mirror` | `{ "<folderId>\|<windowId>\|<workspaceId>": groupId }`: which island mirrors which folder. |
+| `mirror` | `{ "<folderId>\|<windowId>\|<workspaceId>": groupId }`: which island mirrors which folder. Chrome and Edge have no workspaces: the key ends in `\|`. |
 | `watch` | the statuses watch's memo: `due` (`"<map> <id>"` or `"site <base>"` → when it is asked again), `me` (Jira site → the session's accountId), `checked` (site → when it was last asked). |
 
 The panel's `localStorage` holds per-viewer conveniences only: `view` (`tree` / `log`; Settings isn't remembered)
@@ -80,8 +84,8 @@ A tab row that is folded has a key with a tab id, and tab ids change on restart,
 
 ## Commands (panel → background)
 
-`chrome.runtime.sendMessage({ type, ... })`. The reply is `{ ok: true }` or `{ ok: false, error }`. Commands run one
-at a time and wait until the start-up restore is done.
+`chrome.runtime.sendMessage({ type, ... })`. The reply is `{ ok: true }` (with the command's answer, if it has one) or
+`{ ok: false, error }`. Commands run one at a time and wait until the start-up restore is done.
 
 | type | payload | does |
 |---|---|---|
@@ -93,6 +97,7 @@ at a time and wait until the start-up restore is done.
 | `closeItems` | `tabIds`, `folderIds` | closes the tabs and deletes the folders, without declining. |
 | `allowAutoFolder` | `key` | removes the key from `declined` and schedules a tidy pass, so a family that qualifies gets its folder right away. |
 | `openTab` | `url` (http or https), `parent`: a tab id, or -1 for the top level | opens the page in a new tab and puts it under `parent`: the URL is kept in `placing` until `tabs.onCreated` reports the tab, which then takes that parent instead of its opener, and the parent is set again once `tabs.create` returns. The details card's **Open pipeline** and **Sign in** use it. |
+| `importTree` | `backup`: a file's contents, as parsed | Settings › Import (see Backups). Answers `{ folders, matched, saved }`: folders taken in, and how many of the file's tabs were found open. `not a TabTree backup` when `readBackup()` refuses it. |
 
 A ref is `"t:<tabId>"` or `"f:<folderId>"` (`nodeRef()` in tree.js).
 
@@ -245,8 +250,49 @@ The panel builds the tree for the current workspace. The background builds one p
   with the island's name (or `Untitled`) and color, placed the top of that island's tree into it, and recorded the
   island in `mirror`, so that nothing moved. It runs once per profile; an empty `folders` object counts as done.
 
+## Backups (`backup.js`)
+
+Settings › Backup. The file is JSON: `{ tabtree: 1, savedAt, folders, ranks, declined, settings, wallpaper?, tabs }`.
+
+- **`backupOf()`** (the panel's **Export**): `folders` and `declined` as stored; `ranks` of folders only (tab ranks
+  go with the tabs); `settings` without `onboarded` and `setup`, whose steps differ from browser to browser; the
+  `wallpaper` when it has a picture; `tabs` = `snapshotOf()` of every tab in every window, as a restart keeps them.
+  The panel reads storage and `tabs.query({})` itself and saves the file through `<a download>` with a `blob:` URL,
+  so no `downloads` permission is needed.
+- **`readBackup()`** takes nothing on trust, since a file may come from anywhere: `tabtree` must be 1 and `tabs` a
+  list. Folders need `[a-z0-9]+` ids; a name is cut to 200 characters (empty → `Untitled`), a color outside the nine
+  becomes grey, a parent that isn't in the file becomes the top level, and `key` / `auto` stay only when they are a
+  ticket key / `true`. Ranks of folders in the file, ticket keys in `declined`, the six boolean switches, and a
+  wallpaper with a `data:image/` URL, `tones` and its numbers are kept. A tab keeps its place in the list (positions
+  are parents), with a parent that is `-1`, a position in the list, or a folder in the file, else `null`.
+- **`importTree`** (background): `matchTabs()` against every open tab, as after a restart; then `folders` = the
+  file's; `parents` keep the entries of tabs not placed in a folder that is gone, and take `restoredParents()`;
+  `ranks` keep tab ranks, take the file's folder ranks and `restoredRanks()`; `declined` and `settings` are merged
+  with the file's; `wallpaper` is replaced when the file has one. It logs `imported`.
+- **Why folders are replaced, not merged:** the usual import is into a fresh copy of the extension, whose first start
+  has already turned the old copy's islands into folders of its own (`migrateIslands()`). Merging would leave those
+  as empty twins. Replaced, their tabs move into the file's folders, and `mirrorNow()` adopts the same islands.
+- **`restoredParents()`** stops a chain of parents that comes round on itself; a file could hold one.
+
+## Packages for the stores (`scripts/`)
+
+- `npm run pack` (`scripts/pack.js`) copies `probe/` to `dist/<browser>/` for `opera`, `chrome` and `edge`, writes
+  that browser's manifest there, and zips it into `dist/tabtree-<browser>-<version>.zip` with the `zip` command.
+  `dist/` is not in git. `dist/chrome/` and `dist/edge/` can be loaded unpacked to try a build.
+- `scripts/manifests.js`: `manifestFor(base, target)`. Opera's is `probe/manifest.json` as it is. Chrome's and Edge's
+  drop `sidebar_action`, add the `sidePanel` permission, `side_panel.default_path` (`panel.html`), an `action` (the
+  toolbar button, with the sidebar's title and icons) and `minimum_chrome_version: 116` (`setPanelBehavior()`).
+- The background calls `chrome.sidePanel?.setPanelBehavior({ openPanelOnActionClick: true })` at every start, so the
+  toolbar button opens the panel. In Opera there is no `chrome.sidePanel`, and nothing happens.
+- `probe/manifest.json` stays Opera's, with no `side_panel` or `action`: the owner's copy loads `probe/` itself, and an
+  `action` would put a button that does nothing into Opera's toolbar.
+
 ## The panel (`panel.js`)
 
+- **The browser:** `browser = browserOf(navigator.userAgent, globalThis.opr)` (browser.js). Opera's pages have `opr`,
+  and Edge names itself `Edg/`. It gives the words for islands or tab groups in the status bar, the folder counts'
+  tooltips, Settings (the section is named after the browser), the Log and the report; the setup guide's steps; the
+  empty state's `workspace` or `window`; and the version in the report.
 - **Rendering:**
   - `refresh()` (120 ms debounce, on any tab event or a change of `parents`, `folders`, `ranks`, `settings` or
     `declined`) → `load()` → `render()`;
@@ -314,7 +360,8 @@ The panel builds the tree for the current workspace. The background builds one p
     list (a redraw's own scroll event doesn't count), a view switch;
   - a drawing with a running line redraws itself 30 s later (`tick`), for the fills that follow the clock.
 - **Settings and the guide:** `renderSettings()` builds the Settings view (with `backgroundSettings()` first);
-  `guideCard()` draws the setup guide. Both write `settings` through `setSetting()`, a read-modify-write of the whole
+  `guideCard()` draws the setup guide. Settings › Backup calls `exportBackup()`, and `#backup-input` (a hidden file
+  input) `importBackup()`, which parses the file and sends `importTree`. Both write `settings` through `setSetting()`, a read-modify-write of the whole
   object.
 - **Log and report:** `diagnostics()` gathers what both show: versions, counts, the snapshot, the last 60 events and
   30 background changes. `buildReport()` turns it into the plain-text report (`fmtEvent()` per event), `renderLog()`
@@ -413,11 +460,36 @@ A picture behind the panel (Settings › Background), stored under `wallpaper`.
   can be stored on a tab.
 - **Unpacked extension ID**: it comes from the folder path, and storage belongs to the ID. **Moving or renaming
   `probe/` starts the extension with empty storage** (folders, placements, order lost). Adding a manifest `key`
-  changes the ID once too.
+  changes the ID once too. A copy from a store has an ID of its own, so its storage starts empty: that is what
+  Backup is for.
 - **`storage.session`** is cleared by an extension reload, so a reload also runs the restore from the snapshot.
   That is harmless: the ids are the same.
 - **The service worker** may be stopped at any time. In-memory state (`ours`, `keyOfTab`, timers) is only a
   short-lived optimization; anything lasting is in storage.
+
+## Chrome and Edge
+
+**Verified 2026-09-30** (Chrome and Edge on Windows, loaded unpacked from `dist/`): the toolbar button opens the
+panel, and the tree, automatic folders and tab groups work. Edge's sidebar stays on the right, with no setting to
+move it; Chrome's side panel moves to the left (Settings › Appearance › Side panel, or a right click on its edge).
+Chrome has vertical tabs too, which collapse to a column of icons.
+
+**Assumed, not checked one by one yet:**
+
+- `chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })` makes the toolbar button open the panel
+  (Chrome's side panel, Edge's sidebar), and `tabs.query({ currentWindow: true })` in the panel gives its window.
+- `chrome.tabGroups`, `tabs.group` / `ungroup` and `tabGroups.update` work as in Opera. Chrome keeps one-tab groups,
+  which the mirror doesn't make anyway. Chrome also saves tab groups (Saved Tab Groups): whether the groups the
+  mirror makes and releases pile up there is to be seen.
+- `tabs.create({ openerTabId })` keeps the opener it was given (the fake does so); `openTab` places the tab either
+  way.
+- A new tab (Ctrl+T) gets an internal URL (`chrome://newtab/`, `edge://newtab/`), so its opener is ignored as in
+  Opera.
+- A page opened from another app commits as `start_page`, as Chromium does.
+- `permissions.request()` from a click in the side panel shows the browser's prompt.
+- `<a download>` with a `blob:` URL saves a file from the side panel (and from Opera's sidebar panel), and the file
+  input opens a picker there.
+- The panel's width: Chrome's side panel can't be made as narrow as Opera's sidebar panel.
 
 ## Tests
 
@@ -426,14 +498,17 @@ A picture behind the panel (Settings › Background), stored under `wallpaper`.
 - `tests/helpers/stored.js`: `asStored()`, what Opera's storage gives back (a JSON copy with sorted keys); both fakes
   return stored values through it.
 - `tests/helpers/opera-fake.js` is a fake of the Opera APIs the background uses: tabs, islands that vanish when
-  empty, storage, events. `open()` opens a tab, `close()` closes one, `setGroup()` imitates a change made in Opera,
+  empty, storage, events. `makeChrome()` fakes Chrome instead: no `workspaceId`, `tabs.create` keeps the opener it is
+  given, and `sidePanel.setPanelBehavior()` (`panel.behavior`). `open()` opens a tab, `close()` closes one, `setGroup()` imitates a change made in Opera,
   and `ask()` sends a panel command or query. It fakes Opera's optional permissions (`granted`, `grant()`,
   `revoke()`) and alarms; the network is `globalThis.fetch`, set by the test.
 - `tests/helpers/panel-env.js` loads `panel.html` + `panel.js` into jsdom with a fake API. It records the messages
   the panel sends, the tabs it opens, closes, reloads and unloads, the text it copies and the settings it writes
   (`storage.local.set` updates the store and notifies the panel, as Opera does). It fakes Opera's optional
   permissions (`granted`, and `permissions.answer` for the next request) and the network (`fetch`; without it every
-  request fails). `onMessage` may answer with `{ reply }`. Its helpers `click` / `drag` /
+  request fails). `onMessage` may answer with `{ reply }`. `browser` (`opera` by default, `chrome`, `edge`) sets the
+  user agent and `opr`; files the panel saves are in `downloads` (`{ name, href }`, a `blob:` URL that
+  `resolveObjectURL()` reads). Its helpers `click` / `drag` /
   `fire` / `key` / `selected` / `search` look rows up by text; `rightClick` / `more` / `menu` / `hint` / `pick` open
   menus and use them.
 - `tests/helpers/check.js`: `check(label, ok)` prints PASS/FAIL and fails the file on FAIL.
@@ -461,10 +536,15 @@ A picture behind the panel (Settings › Background), stored under `wallpaper`.
 | `watch-background.test.js` | the watch in the background: the alarm, a round on it and right after a connection, only connected sites, the switch, no alarm without sites |
 | `open-tab.test.js` | a tab the panel opens hangs where it says, not under the tab in view that Opera gives it as opener |
 | `probe-api.test.js` | the `probeApi` query in the background: the answer, what is kept, what is refused |
+| `browser.test.js` | which browser by `opr` and the user agent, its words and setup steps; each browser's manifest, and the files they name |
+| `backup.test.js` | what Export writes, what Import takes from odd files, a chain of parents in a circle; `importTree` into a fresh copy that turned the old islands into folders: folders replaced, tabs back in place, the islands kept |
+| `panel-backup.test.js` | Settings › Backup: Export's file and message, Import sending a file and its message, a file that isn't JSON |
+| `chrome.test.js` | the background in Chrome: the side panel's button, a folder mirrored as a tab group without workspaces, `openTab` |
+| `panel-chrome.test.js` | the panel in Chrome: the setup guide, Groups in the status bar, folder tooltips, Settings › Chrome and Tab groups, the report and the Log, the search hint |
 | `statuses.test.js` | the marks of a merge request by precedence, pipelines, jobs, builds, tickets; unknown, stale, changed; summaries, the status bar, search words, times |
 | `panel-statuses.test.js` | statuses in the panel: marks, lozenges and lines in rows, folder and folded summaries, the status bar (search, Close finished), the details card (hover, pin, Open pipeline, a redraw meanwhile), the switches, a signed-out site (banner, stale, Sign in), Settings › Statuses (states, Connect, Retry, Test, Disconnect), the report |
 
-Everything is tested against fakes, never against real Opera. After a change, ask the repo owner to reload the
+Everything is tested against fakes, never against a real browser. After a change, ask the repo owner to reload the
 extension and look, or to paste **Copy report**. The panel tests find elements by id and class (`#list .row`,
 `.title`, `.dot`, `#selbar`, `#sel-close`, `input.rename`, `.drop-zone`, `.menu .mi .label`, `.settings`, `.card`,
 `.row.hit .crumbs`, `#wall`, `#wp-dim`…), icon-only buttons by their `aria-label`, and rows by their text; UI.md

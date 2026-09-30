@@ -4,6 +4,8 @@ import { icon } from './icons.js';
 import { tonesOf, wallTokens } from './wallpaper.js';
 import { detectSites, probeSite, originPattern, describeWatched, watchedOf, MAPS, KIND_NAMES, PAGE_TO_OPEN } from './integrations.js';
 import { rowStatus, summaryOf, barOf, statusWords, cardOf, MARKS, ago } from './statuses.js';
+import { browserOf } from './browser.js';
+import { backupOf } from './backup.js';
 
 const $ = sel => document.querySelector(sel);
 const listEl = $('#list');
@@ -35,11 +37,8 @@ const prefs = {
 // Chromium tab group colors, which folders share with the islands that mirror them (`.c-<color>` in panel.css).
 const COLORS = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'];
 
-const SETUP_STEPS = [
-  ['pin', 'Pin this panel', "The pin in the panel's title bar keeps it next to the page."],
-  ['tabs', "Collapse Opera's tabs", 'Settings › Browser › Tabs: vertical tabs, collapsed to a column of icons.'],
-  ['islands', 'Turn off automatic Tab Islands', 'TabTree makes islands from your folders.'],
-];
+// Opera, Chrome or Edge: what the tab strip's groups are called (islands or tab groups), and the setup steps.
+const browser = browserOf(navigator.userAgent, globalThis.opr);
 
 let view = prefs.get('view') === 'log' ? 'log' : 'tree'; // 'tree', 'log' or 'settings'
 const collapsed = new Set(prefs.get('collapsed', []));
@@ -948,7 +947,7 @@ function tabRow(t, depth, { open, onTwisty, key, label } = {}) {
 
 function folderCountTitle(n, topLevel) {
   if (!topLevel || !islandsOn() || n === 0) return plural(n, 'tab');
-  return n >= 2 ? `${plural(n, 'tab')} · an island in Opera's tab strip` : '1 tab · no island: Opera keeps no one-tab islands';
+  return n >= 2 ? `${plural(n, 'tab')} · ${browser.aGroup} in ${browser.name}'s tab strip` : `1 tab · no ${browser.group}: ${browser.oneTab}`;
 }
 
 // ---- statuses in the tree ----
@@ -1264,7 +1263,7 @@ function renderSearch(q, out) {
     const clear = button('btn sm', 'Clear search', 'Clear the search (Esc)', clearSearch);
     clear.append(el('kbd', 'k', 'Esc'));
     out.append(emptyState('search', 'No tabs match',
-      'Every word has to match a title, URL, ticket key, page kind (mr, pipeline, jira) or status (failed, running, merged, ready, done, rebase). All workspaces are searched.', clear));
+      `Every word has to match a title, URL, ticket key, page kind (mr, pipeline, jira) or status (failed, running, merged, ready, done, rebase).${browser.workspaces ? ' All workspaces are searched.' : ''}`, clear));
     return;
   }
   const meta = el('div', 'meta');
@@ -1297,10 +1296,11 @@ function labelButton(cls, name, text, title, onClick) {
 function guideCard() {
   const card = el('section', 'card guide');
   card.setAttribute('aria-label', 'Setup');
-  card.append(el('h4', null, 'Set up TabTree'), el('p', null, 'Three things in Opera, once. Click a step to mark it done.'));
+  const things = ['One thing', 'Two things', 'Three things'][browser.setup.length - 1];
+  card.append(el('h4', null, 'Set up TabTree'), el('p', null, `${things} in ${browser.name}, once. Click a step to mark it done.`));
   const done = settings.setup ?? {};
   const steps = el('ol', 'steps');
-  SETUP_STEPS.forEach(([id, name, text], i) => {
+  browser.setup.forEach(([id, name, text], i) => {
     const li = el('li', done[id] ? 'done' : null);
     li.dataset.step = id;
     const num = el('span', 'num', done[id] ? null : String(i + 1));
@@ -1389,14 +1389,15 @@ function renderSettings() {
   option('Links from other apps', 'A page opened from another app (an editor, a chat, Claude Code) goes to the tab that already shows it, reloaded, instead of opening a copy. Links inside the browser open as always.',
     toggleBox('set-reuse-tabs', settings.reuseTabs !== false, on => setSetting('reuseTabs', on)));
 
-  section('Opera');
+  section(browser.name);
   const mirrorOn = islandsOn();
-  option('Islands', "Every top-level folder with two or more tabs is an island in Opera's tab strip. Changes made to islands in Opera are put back.",
+  const { group, aGroup } = browser;
+  option(browser.Groups, `Every top-level folder with two or more tabs is ${aGroup} in ${browser.name}'s tab strip. Changes made to ${group}s in ${browser.name} are put back.`,
     toggleBox('set-mirror', mirrorOn, on => setSetting('mirrorIslands', on)));
   const islands = el('ul', 'islands');
   for (const n of root.children.filter(c => c.folder)) {
     const count = tabIdsUnder(n).length;
-    const state = !mirrorOn ? 'islands are off' : count >= 2 ? 'island' : count === 1 ? 'no island, Opera needs 2' : 'no island';
+    const state = !mirrorOn ? `${group}s are off` : count >= 2 ? group : count === 1 ? `no ${group}, ${browser.needsTwo}` : `no ${group}`;
     const li = el('li', 'il');
     li.dataset.folder = n.folder.id;
     li.append(colorSquare(n.folder.color), el('span', 'grow', n.folder.name), el('span', 'm', `${plural(count, 'tab')} · ${state}`));
@@ -1405,14 +1406,20 @@ function renderSettings() {
   if (!islands.childElementCount) islands.append(el('li', 'il m', 'No folders on the top level yet.'));
   out.append(islands);
 
+  section('Backup');
+  option('Export', 'Folders, where the tabs sit in them, the switches and the background, as a file.',
+    button('btn sm', 'Export', 'Save a backup file', exportBackup));
+  option('Import', 'Folders from a backup file replace the ones here, and the open tabs it knows go back into them. To move to another browser or profile.',
+    button('btn sm', 'Import…', 'Pick a backup file', () => $('#backup-input').click()));
+
   section('Diagnostics');
-  option('Report', "Opera's version and APIs, counts, the snapshot and the last 60 events. Paste it into a session.",
+  option('Report', `${browser.name}'s version and APIs, counts, the snapshot and the last 60 events. Paste it into a session.`,
     labelButton('btn sm', 'copy', 'Copy', 'Copy the report', copyReport));
   option('Log', 'The same report, live, with every event as it happens.',
     labelButton('btn sm', 'log', 'Open', 'Open the log', () => switchView('log')));
 
   section('Setup');
-  option('Setup guide', "Pin the panel, collapse Opera's tab strip, turn off Opera's own Tab Islands.",
+  option('Setup guide', browser.setupLine,
     button('btn sm', 'Show', 'Show the setup guide above the tree', showGuide));
   return out;
 }
@@ -1866,15 +1873,15 @@ function renderStats() {
   const on = islandsOn();
   const islands = on ? root.children.filter(n => n.folder && tabIdsUnder(n).length >= 2) : [];
   islandsEl.hidden = on && !islands.length;
-  islandsEl.replaceChildren(on ? 'Islands' : 'Islands off');
+  islandsEl.replaceChildren(on ? browser.short : `${browser.short} off`);
   for (const n of islands) {
     const sq = colorSquare(n.folder.color);
     sq.title = n.folder.name;
     islandsEl.append(sq);
   }
   islandsEl.title = on
-    ? `${plural(islands.length, 'folder')} ${islands.length === 1 ? 'is an island' : 'are islands'} in Opera's tab strip`
-    : "Islands are off: folders aren't mirrored in Opera's tab strip";
+    ? `${plural(islands.length, 'folder')} ${islands.length === 1 ? `is ${browser.aGroup}` : `are ${browser.group}s`} in ${browser.name}'s tab strip`
+    : `${browser.Groups} are off: folders aren't mirrored in ${browser.name}'s tab strip`;
 }
 
 islandsEl.onclick = () => switchView('settings');
@@ -1924,7 +1931,7 @@ function render() {
     out.append(...troubleBanners());
     if (!settings.onboarded && !guideLater) out.append(guideCard());
     if (!root.children.length) {
-      out.append(emptyState('emptyTree', 'No tabs in this workspace', 'Open a tab and it shows up here. A tab opened from another one hangs under it.',
+      out.append(emptyState('emptyTree', `No tabs in this ${browser.workspaces ? 'workspace' : 'window'}`, 'Open a tab and it shows up here. A tab opened from another one hangs under it.',
         labelButton('btn sm', 'newFolder', 'New folder', 'New folder on the top level', () => addFolder(root))));
     }
     for (const n of root.children) renderNode(n, 0, out);
@@ -1978,11 +1985,13 @@ function fmtEvent(e) {
     case 'closed':
       return `${ts} closed a selection: ${e.tabs} tab(s), ${e.folders} folder(s)`;
     case 'mirror':
-      return `${ts} mirror: ${e.islands} island(s), ${e.moved} tab(s) moved in, ${e.ungrouped} taken out`;
+      return `${ts} mirror: ${e.islands} ${browser.group}(s), ${e.moved} tab(s) moved in, ${e.ungrouped} taken out`;
     case 'migrated':
-      return `${ts} islands turned into ${e.folders} folder(s)`;
+      return `${ts} ${browser.group}s turned into ${e.folders} folder(s)`;
     case 'restored':
       return `${ts} restored the tree: ${e.matched} of ${e.saved} saved tabs matched, ${e.links} links`;
+    case 'imported':
+      return `${ts} imported a backup: ${e.folders} folder(s), ${e.matched} of ${e.saved} saved tabs matched`;
     case 'favicon':
     case 'title':
       return `${ts} ${e.ev} #${e.id} ${e.host}`;
@@ -2001,7 +2010,7 @@ async function diagnostics() {
   const { mirror = {} } = await chrome.storage.session.get('mirror').catch(() => ({}));
   const byTime = (a, b) => a.t - b.t;
   return {
-    opera: ua.match(/OPR\/([\d.]+)/)?.[1] ?? '?',
+    version: ua.match(browser.version)?.[1] ?? '?',
     chromium: ua.match(/Chrome\/([\d.]+)/)?.[1] ?? '?',
     platform: navigator.platform,
     count: {
@@ -2030,14 +2039,14 @@ async function buildReport() {
   const c = d.count;
   const lines = [
     '## TabTrees probe',
-    `- Opera ${d.opera}, Chromium ${d.chromium}, ${d.platform}`,
+    `- ${browser.name} ${d.version}, Chromium ${d.chromium}, ${d.platform}`,
     `- opr: ${apiNames(globalThis.opr)}`,
     `- opr.sidebarAction: ${apiNames(globalThis.opr?.sidebarAction)}`,
     `- Tab fields: ${[...new Set(allTabs.flatMap(t => Object.keys(t)))].sort().join(', ')}`,
     `- chrome.sidebarAction: ${yes(chrome.sidebarAction)} · chrome.sidePanel: ${yes(chrome.sidePanel)} · chrome.tabGroups: ${yes(chrome.tabGroups)}`,
-    `- Tabs in window: ${c.all} (pinned ${c.pinned}, active ${c.active}, discarded ${c.discarded}, in an island ${c.island}); lastAccessed: ${yes(allTabs.some(t => typeof t.lastAccessed === 'number'))}`,
+    `- Tabs in window: ${c.all} (pinned ${c.pinned}, active ${c.active}, discarded ${c.discarded}, in ${browser.aGroup} ${c.island}); lastAccessed: ${yes(allTabs.some(t => typeof t.lastAccessed === 'number'))}`,
     `- Workspaces: ${d.workspaces.join('; ')}`,
-    `- Folders: ${Object.keys(folders).length}; mirrored as islands: ${d.islands}; ordered by hand: ${Object.keys(ranks).length}; kept out of automatic folders: ${Object.keys(declined).length}`,
+    `- Folders: ${Object.keys(folders).length}; mirrored as ${browser.group}s: ${d.islands}; ordered by hand: ${Object.keys(ranks).length}; kept out of automatic folders: ${Object.keys(declined).length}`,
     `- Tab placements: ${d.placed} of ${tabs.length} tabs; ticket keys: ${d.keyed} tabs, ${d.keys} distinct`,
     `- Snapshot for restarts: ${d.snapshot}`,
     `- Wallpaper: ${wallpaperLine()}`,
@@ -2057,6 +2066,7 @@ async function buildReport() {
 const EVENT_TAGS = {
   created: ['created', 'blue'], navTarget: ['link', 'blue'], place: ['place', 'purple'], folder: ['folder', 'yellow'],
   migrated: ['folder', 'yellow'], mirror: ['mirror', 'cyan'], closed: ['closed', 'red'], restored: ['restored', 'green'],
+  imported: ['imported', 'green'],
   title: ['title', 'grey'], favicon: ['favicon', 'grey'], installed: ['installed', 'grey'],
   opened: ['opened', 'blue'], reused: ['reused', 'green'],
 };
@@ -2081,11 +2091,13 @@ function eventWords(e) {
     case 'closed':
       return [`a selection: ${plural(e.tabs, 'tab')}, ${plural(e.folders, 'folder')}`];
     case 'mirror':
-      return [`${plural(e.islands, 'island')}, ${plural(e.moved, 'tab')} moved in, ${e.ungrouped} taken out`];
+      return [`${plural(e.islands, browser.group)}, ${plural(e.moved, 'tab')} moved in, ${e.ungrouped} taken out`];
     case 'migrated':
-      return [`islands turned into ${plural(e.folders, 'folder')}`];
+      return [`${browser.group}s turned into ${plural(e.folders, 'folder')}`];
     case 'restored':
       return [`${e.matched} of ${e.saved} saved tabs matched, ${plural(e.links, 'link')}`];
+    case 'imported':
+      return [`a backup: ${plural(e.folders, 'folder')}, ${e.matched} of ${e.saved} saved tabs matched`];
     case 'favicon':
     case 'title':
       return [code(`#${e.id}`), ` ${e.host}`];
@@ -2121,15 +2133,15 @@ async function renderLog() {
     dd.append(...value);
     kv.append(el('dt', null, name), dd);
   };
-  item('Opera', `${d.opera} · Chromium ${d.chromium} · ${d.platform}`);
+  item(browser.name, `${d.version} · Chromium ${d.chromium} · ${d.platform}`);
   item('APIs', ...[
     ['opr.sidebarAction', globalThis.opr?.sidebarAction],
     ['chrome.tabGroups', chrome.tabGroups],
     ['chrome.sidePanel', chrome.sidePanel],
   ].map(([name, api]) => apiMark(name, !!api)));
-  item('Tabs', `${c.all} in window · ${c.pinned} pinned · ${c.discarded} discarded · ${c.island} in islands`);
+  item('Tabs', `${c.all} in window · ${c.pinned} pinned · ${c.discarded} discarded · ${c.island} in ${browser.group}s`);
   item('Workspaces', d.workspaces.join(' · '));
-  item('Folders', `${Object.keys(folders).length} · islands ${d.islands} · ordered by hand ${Object.keys(ranks).length}`);
+  item('Folders', `${Object.keys(folders).length} · ${browser.group}s ${d.islands} · ordered by hand ${Object.keys(ranks).length}`);
   item('Placements', `${d.placed} of ${tabs.length} tabs · keys on ${d.keyed} tabs, ${d.keys} distinct`);
   item('Snapshot', d.snapshot);
   if (wallpaper) item('Wallpaper', wallpaperLine());
@@ -2214,6 +2226,41 @@ $('#new-folder').onclick = () => {
   qEl.value = '';
   if (view !== 'tree') switchView('tree');
   addFolder(root);
+};
+
+// ---- backup ----
+// Settings › Backup. Export saves the tree as a file (backup.js); Import hands a file's contents to the background,
+// the only writer of the tree, which puts them in place.
+
+async function exportBackup() {
+  const [all, stored] = await Promise.all([
+    chrome.tabs.query({}),
+    chrome.storage.local.get(['parents', 'folders', 'ranks', 'settings', 'declined', 'wallpaper']),
+  ]);
+  const backup = backupOf({ tabs: all, ...stored });
+  const link = el('a');
+  link.href = URL.createObjectURL(new Blob([JSON.stringify(backup)], { type: 'application/json' }));
+  link.download = `tabtree-${new Date().toISOString().slice(0, 10)}.json`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 60_000);
+  toast(`Exported ${plural(Object.keys(backup.folders).length, 'folder')} and ${plural(backup.tabs.length, 'tab')}`);
+}
+
+async function importBackup(file) {
+  let backup;
+  try {
+    backup = JSON.parse(await file.text());
+  } catch {
+    return toast(`${file.name} isn't a TabTree backup`, { error: true });
+  }
+  const res = await send({ type: 'importTree', backup });
+  if (res?.ok) toast(`Imported ${plural(res.folders, 'folder')} · ${res.matched} of ${res.saved} tabs back in place`);
+}
+
+$('#backup-input').onchange = e => {
+  const [file] = e.target.files ?? [];
+  e.target.value = '';
+  if (file) importBackup(file);
 };
 
 // ---- wallpaper ----

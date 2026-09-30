@@ -11,6 +11,7 @@ check('key from the title', ticketKey(jira) === 'PROJ-7' && ticketKey(mr) === 'P
 check('key from the URL path of a loading tab', ticketKey({ title: '', pendingUrl: J + 'PROJ-9' }) === 'PROJ-9');
 check('a board with ?selectedIssue= is not that issue', ticketKey({ title: 'Team board - Jira', url: 'https://jira.example.com/secure/RapidBoard.jspa?selectedIssue=PROJ-1' }) === null);
 check('UTF-8, CVE-2024 and the like are not keys', ticketKey({ title: 'Fix UTF-8 handling, see CVE-2024-3094', url: 'https://example.com/' }) === null);
+check('nor a YouTube channel id', ticketKey({ title: 'Music - YouTube', url: 'https://www.youtube.com/channel/UC-9-kyTW8ZkZNDHQJ6FgpwQ' }) === null);
 
 check('Jira suffix and key are cut', cleanTitle(jira, 'PROJ-7').text === 'Rate limiter for the public API');
 const cleanMr = cleanTitle(mr, 'PROJ-7');

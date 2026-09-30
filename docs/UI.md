@@ -14,6 +14,11 @@ at the end. What each control does is in [FEATURES.md](FEATURES.md); where the c
 - **Opera's title bar:** Opera draws its own bar above the panel with the extension's name (`name` in
   `manifest.json`, now "TabTrees Probe"), a reload button and a pin. It isn't ours to style. The icon in Opera's
   sidebar comes from `probe/icons/`.
+- **In Chrome and Edge:** the browser's side panel, opened by TabTree's toolbar button: in Chrome on the right or,
+  as the setup guide suggests, on the left; in Edge, the sidebar, which stays on the right (Edge's vertical tabs,
+  collapsed, are then on the left). The browser draws the bar above it.
+  Chrome's side panel doesn't get as narrow as Opera's sidebar panel. The words follow the browser: **Groups** and
+  tab groups where Opera has **Islands** and islands, and no workspaces.
 - **Theme:** light or dark, following `prefers-color-scheme` (the owner uses Opera's dark theme).
 - **Amount:** usually 10–100 tabs, 3–10 folders and trees up to 5–6 levels deep. Titles are long. Density matters:
   the panel competes with the page for width.
@@ -190,12 +195,14 @@ in.
 - Separators (`.msep`). The folder menu has a `Color` label and a row of nine round swatches; the current one is
   ringed.
 
-**Setup guide** (`.card` at the top of the tree): title, subtitle, three steps with a number in a `--sel` circle,
+**Setup guide** (`.card` at the top of the tree): title, subtitle (`Three things in Opera, once. …`), the browser's
+steps (three in Opera, two in Chrome and Edge) with a number in a `--sel` circle,
 or a tick in an accent circle when done; a bold name and a muted line each. Buttons **Got it** (primary) and
 **Later**.
 
 **Empty states** (`.empty`): a glyph in a rounded square, a title, a line of text and a button: `No tabs in this
-workspace` with **New folder**; `No tabs match` with **Clear search** (and an `Esc` key cap).
+workspace` (`No tabs in this window` in Chrome and Edge) with **New folder**; `No tabs match` with **Clear search**
+(and an `Esc` key cap).
 
 **Selection bar** (`#selbar`, floating 8px above the status bar, raised, radius 8, 38px):
 - `3 selected` (semibold), `4 tabs, 1 folder` (muted, cut first), **Folder**, **Close**, **✕**.
@@ -219,8 +226,8 @@ workspace` with **New folder**; `No tabs match` with **Clear search** (and an `E
 
 **Status bar** (`.status`, 26px, 11px muted): `#stsum` first (buttons 20px high: a site in trouble, `N failed` in
 red, `N running` with the spinning mark, `N finished` with an idle tick; their words (`.w`) hide below 340px), then
-the counts (cut with an ellipsis), then **Islands** with an 8px square per island in its color (`#islands`);
-`Islands off` when the mirror is off; hidden when there are no islands.
+the counts (cut with an ellipsis), then **Islands** (**Groups** in Chrome and Edge) with an 8px square per island in
+its color (`#islands`); `Islands off` when the mirror is off; hidden when there are no islands.
 
 **A site in trouble** (`.stbanner`, above the tree): `--warn-bg`, 11px, the key or the offline icon, the words and
 a **Sign in** / **Retry** link (`.link`).
@@ -246,21 +253,24 @@ icon and **Copy report**.
 - The highlighted result has a 1.5px accent outline (`.row.hl`).
 
 **Log view** (`.logv`, under the bar with **Copy report**):
-- `This window`, then a grid (`.kv`): Opera, APIs (`✓`/`✗` in `--ok`/muted), Tabs, Workspaces, Folders, Placements,
+- `This window`, then a grid (`.kv`): the browser (Opera, Chrome, Edge), APIs (`✓`/`✗` in `--ok`/muted), Tabs, Workspaces, Folders, Placements,
   Snapshot, and Wallpaper when there is one; values in mono.
 - A segmented switch (`.seg`) **Events** | **Background changes**, each with its count.
 - Events, newest first (`.ev`): the time in mono, a tag tinted with its kind's color (created, link and opened blue,
-  place purple, folder yellow, mirror cyan, closed red, restored and reused green, startup and background changes
+  place purple, folder yellow, mirror cyan, closed red, restored, imported and reused green, startup and background changes
   grey), the text with ids in mono.
 - Copy by hand: a warning banner (`The clipboard refused. The report is selected: press Ctrl+C, then Esc.`) above
   the report in a text area, selected, on `--sel` with an accent outline.
 
 **Settings view** (`.settings`, under the bar):
-- Section labels (`.sub`): **Background**, **Tree**, **Opera**, **Statuses**, **Diagnostics**, **Setup**.
+- Section labels (`.sub`): **Background**, **Statuses**, **Tree**, **Opera** (the browser's name: **Chrome**, **Edge**),
+  **Backup**, **Diagnostics**, **Setup**.
 - Options (`.opt`): a bold name (a label for switches), a muted description, and on the right a switch
   (`input.switch`, 30×18, accent when on) or a small button.
 - **Never for**: chips (`.chip`) with the key and a ✕ button, inside the Auto-folders option.
-- Islands: a bordered list (`.islands`, `.il`): color square, name, `9 tabs · island` (or why not).
+- Islands: a bordered list (`.islands`, `.il`): color square, name, `9 tabs · island` (or why not; `tab group` in
+  Chrome and Edge). The switch's name is **Islands** or **Tab groups**.
+- Backup: **Export** and **Import…**, small buttons; Import opens the hidden `#backup-input`.
 - Statuses (second, after Background): **Show statuses** (`#set-statuses`); a bordered list of sites (`.sites`,
   `.site`, a `.line` 32px high): the favicon of one of its tabs, the host in bold with a small line under it
   (`small`: `.ok` connected, `.warn` signed out, `.fail` offline, muted when not connected, each with its icon), and
@@ -338,7 +348,7 @@ selection bar cuts its description first, and at 300px and less its buttons lose
   - fonts and icons are bundled in `probe/` (icons.js) or are system fonts.
 - **Where things are:**
   - markup skeleton: `probe/panel.html` (header, the Log/Settings bar, selection bar, status bar, the wallpaper's
-    layers, the file input);
+    layers, the file inputs for the wallpaper and the backup);
   - styles: `probe/panel.css`; icons: `probe/icons.js`; wallpaper colors: `probe/wallpaper.js`;
   - rows are built in `probe/panel.js`: `tabRow()`, `renderNode()`, `renderFolder()`, `renderGroup()`, `placeRow()`,
     `kindTag()`, `renderSearch()`, `hitRow()`, `crumbs()`, `renderPinned()`, `renderSelBar()`, `renderStats()`;
@@ -380,6 +390,8 @@ selection bar cuts its description first, and at 300px and less its buttons lose
     `--sel`, `--scrim`, `#wp-none`, `#wp-file` (`aria-checked`), `#wp-dim`, `#wp-blur`, `#wp-frame`
     (`aria-valuenow`), `.slice`, `.wp-name span`, `.wp-name button` by text, `.acc[data-accent]`, `.acc.on`,
     `#wp-input`;
+  - Backup: `.opt` named `Export` and `Import` and their buttons, `#backup-input` (a change event with `files`), and
+    the files saved (`downloads` in panel-env);
   - rows found by their visible text.
 
   Keep them, or update the tests along with the change.

@@ -3,13 +3,20 @@
 // settings and the wallpaper written or removed, drag images set, site permissions asked for. There is no
 // network: pass `fetch` to answer the panel's own requests. Rows are 20px tall for drag and drop:
 // y < 6 is the upper edge ("before"), y > 14 the lower edge ("after"), anything between is "inside".
-// Icon-only buttons are found by their aria-label.
+// Icon-only buttons are found by their aria-label. `browser` is 'opera' (the default), 'chrome' or 'edge': Opera's
+// pages have the `opr` object, and each names itself in the user agent. Files the panel saves are in `downloads`.
 import { JSDOM } from 'jsdom';
 import fs from 'node:fs';
 import { wait } from './check.js';
 import { asStored } from './stored.js';
 
-export async function loadPanel({ tabs, store, session = {}, onMessage = () => {}, granted = [], fetch }) {
+const AGENTS = {
+  opera: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36 OPR/135.0.0.0',
+  chrome: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36',
+  edge: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36 Edg/151.0.0.0',
+};
+
+export async function loadPanel({ tabs, store, session = {}, onMessage = () => {}, granted = [], fetch, browser = 'opera' }) {
   const html = fs
     .readFileSync(new URL('../../probe/panel.html', import.meta.url), 'utf8')
     .replace(/<script[^>]*><\/script>/, '');
@@ -24,6 +31,7 @@ export async function loadPanel({ tabs, store, session = {}, onMessage = () => {
   const copied = [];
   const sets = [];
   const dragImages = [];
+  const downloads = []; // { name, href } of each file saved
   const storageListeners = [];
   // Opera's optional host permissions: what is given, what was asked for, and whether the next ask is granted.
   const permissions = { granted: new Set(granted), asked: [], removed: [], answer: true };
@@ -97,6 +105,12 @@ export async function loadPanel({ tabs, store, session = {}, onMessage = () => {
     throw new TypeError('Failed to fetch');
   });
   w.HTMLElement.prototype.scrollIntoView = () => {};
+  w.HTMLAnchorElement.prototype.click = function () {
+    downloads.push({ name: this.download, href: this.href });
+  };
+  Object.defineProperty(w.navigator, 'userAgent', { value: AGENTS[browser], configurable: true });
+  if (browser === 'opera') globalThis.opr = { sidebarAction: {} };
+  else delete globalThis.opr;
   w.HTMLElement.prototype.getBoundingClientRect = () => ({ top: 0, height: 20 });
   Object.defineProperty(w.navigator, 'clipboard', { value: { writeText: async t => copied.push(t) }, configurable: true });
   Object.assign(globalThis, { window: w, document: w.document, localStorage: w.localStorage });
@@ -153,7 +167,7 @@ export async function loadPanel({ tabs, store, session = {}, onMessage = () => {
   };
 
   return {
-    w, $, rows, row, click, selected, fire, drag, key, sent, activated, removed, reloaded, discarded, created, copied, sets, store, permissions, notify,
+    w, $, rows, row, click, selected, fire, drag, key, sent, activated, removed, reloaded, discarded, created, copied, sets, store, permissions, notify, downloads,
     dragImages, menu, hint, rightClick, more, pick, buttons, hoverButton, mousedown, search, last: () => sent.at(-1),
   };
 }

@@ -1,9 +1,10 @@
 # TabTree
 
-An Opera extension (Manifest V3, no build step) that shows tabs as a tree in Opera's sidebar:
+An Opera extension (Manifest V3, no build step) that shows tabs as a tree in Opera's sidebar, and in Chrome's and
+Edge's side panel:
 - a tab hangs under the tab that opened it;
 - tickets (`PROJ-123`) gather their merge requests and pipelines, and tickets opened from tickets nest;
-- folders nest, and top-level folders are mirrored as Opera Tab Islands.
+- folders nest, and top-level folders are mirrored as Opera Tab Islands (tab groups in Chrome and Edge).
 
 It is the repo owner's personal project (GitHub: ReQur), used daily in Opera on Windows.
 
@@ -34,18 +35,21 @@ Read before changing anything:
 
 ```
 probe/                 the extension, loaded unpacked as it is
-  manifest.json        MV3, sidebar_action (Opera's sidebar API), permissions
+  manifest.json        MV3, Opera's: sidebar_action (Opera's sidebar API), permissions
   background.js        service worker, the only writer of the tree: openers, commands, snapshot/restore, tidy()
   tree.js              buildTree(): folders, placements, ticket rules, order (pure)
   titles.js            ticket keys, title cleanup, page kinds, row labels, names/colors for tickets (pure)
   snapshot.js          the snapshot and matching restored tabs back to it (pure)
+  backup.js            the backup file: what Export writes, what Import accepts (pure)
+  browser.js           Opera, Chrome or Edge, and the panel's words for each (pure)
   panel.html/.css/.js  the sidebar UI: draws the tree, sends commands, never writes the tree itself
   icons.js             the panel's SVG icons and icon(name)
   wallpaper.js         the wallpaper's scrim and accent colors from a sample of its pixels (pure)
   integrations.js      statuses: Jira/GitLab/Jenkins sites in tabs, the probe, the watch's rounds (reads, session)
   statuses.js          what the panel shows for a status: marks, lines, summaries, the status bar, the card (pure)
   icons/               PNG icons of the extension
-tests/                 scenario tests on fakes (jsdom, a fake Opera); helpers in tests/helpers/
+scripts/               npm run pack: dist/<browser>/ and zips for the stores, with each browser's manifest
+tests/                 scenario tests on fakes (jsdom, a fake Opera or Chrome); helpers in tests/helpers/
 docs/                  see above
 ```
 
@@ -60,8 +64,10 @@ docs/                  see above
     folder counts, the snapshot state and the recent events.
 - Invariants (the reasons are in ARCHITECTURE.md):
   - Every change to the tree is a background command: `place`, `newFolder`, `renameFolder`, `colorFolder`,
-    `deleteFolder`, `closeItems`, `allowAutoFolder`, `openTab`. The panel redraws from storage. It writes only `settings`
-    and `wallpaper` itself; the wallpaper has a key of its own, so that its sliders reload no tree.
+    `deleteFolder`, `closeItems`, `allowAutoFolder`, `openTab`, `importTree`. The panel redraws from storage. It writes
+    only `settings` and `wallpaper` itself; the wallpaper has a key of its own, so that its sliders reload no tree.
+  - `probe/manifest.json` stays Opera's. Chrome's and Edge's manifests are made from it by `scripts/manifests.js`;
+    check a change of permissions or keys in both.
   - Work sites (Jira, GitLab, Jenkins hosts) never go into the repo: the manifest has only
     `optional_host_permissions`, and a site is granted at runtime from Settings.
   - Statuses are read-only and use the browser's session: no tokens are stored. Only the background's watch writes

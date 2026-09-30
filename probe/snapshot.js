@@ -70,14 +70,20 @@ export function matchTabs(saved, current) {
 }
 
 // Parent links for the restored tabs. A tab whose saved parent was not restored goes under the nearest
-// saved ancestor that was.
+// saved ancestor that was. A chain of parents that runs in a circle (an imported file can hold anything) ends
+// where it comes round.
 export function restoredParents(saved, match) {
   const parents = {};
   saved.forEach((s, i) => {
     const child = match.get(i);
     if (child === undefined) return;
     let p = s.parent;
-    while (typeof p === 'number' && p !== -1 && !match.has(p)) p = saved[p].parent;
+    const seen = new Set();
+    while (typeof p === 'number' && p !== -1 && !match.has(p) && !seen.has(p)) {
+      seen.add(p);
+      p = saved[p]?.parent;
+    }
+    if (typeof p === 'number' && p !== -1 && !match.has(p)) return;
     if (p === -1 || typeof p === 'string') parents[child] = p;
     else if (p != null) parents[child] = match.get(p);
   });

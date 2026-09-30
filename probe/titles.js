@@ -1,8 +1,8 @@
 // Pure helpers that turn tab titles/URLs into ticket keys, compact row labels and island names.
 
 const KEY_RE = /\b([A-Z][A-Z0-9]{1,9})-(\d{1,7})\b/g;
-// Uppercase-dash-number tokens that are not tracker keys.
-const NOT_KEYS = new Set(['UTF', 'ISO', 'SHA', 'CVE', 'RFC', 'TLS', 'SSL', 'HTTP', 'COVID', 'GPT', 'WIN']);
+// Uppercase-dash-number tokens that are not tracker keys. YouTube channel ids start with UC, and some go on "-9-…".
+const NOT_KEYS = new Set(['UTF', 'ISO', 'SHA', 'CVE', 'RFC', 'TLS', 'SSL', 'HTTP', 'COVID', 'GPT', 'WIN', 'UC']);
 
 const SUFFIXES = [
   // GitLab: "… (!842) · Merge requests · group / project · GitLab"
@@ -122,7 +122,7 @@ export function groupTitle(tabs, key) {
 }
 
 // Chromium tab group colors, in the API's order; a key always gets the same one.
-const ISLAND_COLORS = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'];
+export const ISLAND_COLORS = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'];
 
 export function colorFor(key) {
   const hash = [...key].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);

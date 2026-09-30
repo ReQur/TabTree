@@ -1,9 +1,10 @@
 // Logs tab events, remembers which tab opened which, keeps the tree and its folders across restarts, puts
-// ticket families into folders, and mirrors top-level folders as Opera islands.
+// ticket families into folders, and mirrors top-level folders as islands (Opera) or tab groups (Chrome, Edge).
 import { hostOf, ticketKey, colorFor, islandName, tabToReuse } from './titles.js';
 import { buildTree, tabIdsUnder, pickRoot, nodeRef, folderRef } from './tree.js';
 import { snapshotOf, matchTabs, restoredParents, restoredRanks } from './snapshot.js';
 import { probeSite, detectSites, pollSites, originPattern, forgetChanges, STATUS_FORMAT } from './integrations.js';
+import { readBackup } from './backup.js';
 
 const LIMITS = { log: 200, changes: 100 };
 // Browser pages (settings, extensions, the start page) get the active tab as opener; that link means nothing.
@@ -271,6 +272,31 @@ async function openTab({ url, parent }) {
   setParent(tab.id, parent);
 }
 
+// Settings › Import: a file made by Export, in this browser or another. Its folders replace the ones here, the open
+// tabs it knows go back to their places and order, and its switches and wallpaper replace these. Tabs it doesn't
+// know stay where they are, or go to the top level when their folder is gone.
+async function importTree({ backup }) {
+  const b = readBackup(backup);
+  const match = matchTabs(b.tabs, await chrome.tabs.query({}));
+  const stays = v => typeof v !== 'string' || v.slice(2) in b.folders;
+  await update('folders', () => b.folders);
+  await update('parents', (p = {}) => ({
+    ...Object.fromEntries(Object.entries(p).filter(([, v]) => stays(v))),
+    ...restoredParents(b.tabs, match),
+  }));
+  await update('ranks', (r = {}) => ({
+    ...Object.fromEntries(Object.entries(r).filter(([k]) => k.startsWith('t:'))),
+    ...b.ranks,
+    ...restoredRanks(b.tabs, match),
+  }));
+  await update('declined', (d = {}) => ({ ...d, ...b.declined }));
+  await update('settings', (s = {}) => ({ ...s, ...b.settings }));
+  if (b.wallpaper) await chrome.storage.local.set({ wallpaper: b.wallpaper });
+  const done = { folders: Object.keys(b.folders).length, matched: match.size, saved: b.tabs.length };
+  record('log', { ev: 'imported', ...done });
+  return done;
+}
+
 // Settings › Statuses: the probe asks a site's API from here, where statuses would be fetched from, and keeps
 // the answers for the report.
 async function probeApi({ site }) {
@@ -298,7 +324,7 @@ async function retrySite({ base }) {
   return {};
 }
 
-const commands = { place, newFolder, renameFolder, colorFolder, deleteFolder, closeItems, allowAutoFolder, openTab };
+const commands = { place, newFolder, renameFolder, colorFolder, deleteFolder, closeItems, allowAutoFolder, openTab, importTree };
 // Questions that change no tree run beside the commands' queue, so that a slow site can't hold up a drop. Their
 // answer comes with the reply.
 const queries = { probeApi, retrySite };
@@ -318,7 +344,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   const job = running.then(() => ready).then(() => command(msg));
   running = job.catch(() => {});
   job.then(
-    () => reply({ ok: true }),
+    answer => reply({ ok: true, ...answer }),
     e => reply({ ok: false, error: e.message }),
   );
   return true; // the reply comes asynchronously
@@ -397,8 +423,8 @@ async function autoFolders(stored, trees) {
 
 // ---- mirroring top-level folders as islands ----
 // One way only: each top-level folder with two or more tabs is shown as an island with the folder's name
-// and color (Opera keeps no one-tab islands), and every other tab is kept out of islands. Changes made to
-// islands in Opera itself are undone on the next pass.
+// and color (Opera keeps no one-tab islands; Chrome and Edge follow the same rule), and every other tab is kept out
+// of islands. Changes made to islands in the browser itself are undone on the next pass.
 
 // groupId: an island to join, undefined for a new island, -1 to leave islands.
 async function move(tabIds, groupId) {
@@ -619,7 +645,7 @@ chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
       scheduleMirror();
     }
   }
-  // Islands mirror the folders: a change made to them in Opera itself gets undone.
+  // Islands mirror the folders: a change made to them in the browser itself gets undone.
   if ('groupId' in change && !ours.has(tabId)) scheduleMirror();
   // Title/favicon changes in tabs you are not looking at: raw material for a "changed since you looked" marker.
   if (tab.active || tab.status !== 'complete') return;
@@ -683,6 +709,9 @@ async function logTabCounts(ev) {
     discarded: tabs.filter(t => t.discarded).length,
   });
 }
+
+// Chrome and Edge open the side panel from the toolbar button. Opera has a sidebar of its own and no chrome.sidePanel.
+chrome.sidePanel?.setPanelBehavior({ openPanelOnActionClick: true }).catch(e => console.error('probe: side panel failed', e));
 
 // The tree itself comes back through `ready` (see "keeping the tree across restarts").
 chrome.runtime.onInstalled.addListener(() => logTabCounts('installed'));

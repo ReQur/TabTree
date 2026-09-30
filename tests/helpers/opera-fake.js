@@ -6,14 +6,21 @@
 //
 // makeOpera() puts the fake on globalThis.chrome; import the background afterwards. A second session in the
 // same process needs a fresh module instance: import('../probe/background.js?session=2').
+//
+// makeChrome() fakes Chrome (and Edge) instead: tabs have no workspaces, a tab made by an extension gets the opener
+// it was given, and there is chrome.sidePanel (`panel.behavior` is what the background set).
 
 import { asStored } from './stored.js';
 
-export function makeOpera({ tabs: initial = [], groups: initialGroups = [], local = {}, session = {}, granted: given = [] } = {}) {
+export const makeChrome = (options = {}) => makeOpera({ ...options, browser: 'chrome' });
+
+export function makeOpera({ tabs: initial = [], groups: initialGroups = [], local = {}, session = {}, granted: given = [], browser = 'opera' } = {}) {
+  const opera = browser === 'opera';
   const listeners = {};
   const storageListeners = [];
   const on = name => ({ addListener: fn => { listeners[name] = fn; } });
-  const defaults = { windowId: 1, pinned: false, groupId: -1, workspaceId: 'w', status: 'complete', title: '' };
+  const defaults = { windowId: 1, pinned: false, groupId: -1, status: 'complete', title: '', ...(opera && { workspaceId: 'w' }) };
+  const panel = {};
   const tabs = new Map(initial.map(t => [t.id, { ...defaults, index: t.id, ...t }]));
   const granted = new Set(given);
   const alarms = new Map();
@@ -78,10 +85,10 @@ export function makeOpera({ tabs: initial = [], groups: initialGroups = [], loca
         return snap(id);
       },
       // As Opera does, a tab made by an extension gets the tab in view as its opener, whatever it was asked for.
-      create: async ({ url, active = true } = {}) => {
+      create: async ({ url, active = true, openerTabId } = {}) => {
         const id = nextTab++;
         const inView = [...tabs.values()].find(t => t.active);
-        tabs.set(id, { ...defaults, id, index: tabs.size, url: '', pendingUrl: url, active, openerTabId: inView?.id });
+        tabs.set(id, { ...defaults, id, index: tabs.size, url: '', pendingUrl: url, active, openerTabId: opera ? inView?.id : openerTabId });
         listeners.created(snap(id));
         return snap(id);
       },
@@ -115,6 +122,7 @@ export function makeOpera({ tabs: initial = [], groups: initialGroups = [], loca
     webNavigation: { onCreatedNavigationTarget: on('navTarget'), onCommitted: on('committed') },
     windows: { update: async (id, props) => void focused.push([id, props]) },
     runtime: { onInstalled: on('installed'), onStartup: on('startup'), onMessage: on('message') },
+    ...(!opera && { sidePanel: { setPanelBehavior: async behavior => void (panel.behavior = behavior) } }),
   };
   globalThis.chrome = chrome;
 
@@ -134,5 +142,5 @@ export function makeOpera({ tabs: initial = [], groups: initialGroups = [], loca
     granted.delete(origin);
     listeners.permissionsRemoved?.({ origins: [origin] });
   };
-  return { chrome, listeners, tabs, groups, local, session, alarms, updates, focused, open, close, ask, setGroup, grant, revoke };
+  return { chrome, listeners, tabs, groups, local, session, alarms, updates, focused, panel, open, close, ask, setGroup, grant, revoke };
 }

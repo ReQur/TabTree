@@ -5,6 +5,11 @@ Everything the extension does today, from the user's side. How it works inside i
 
 ## Setup
 
+TabTree runs in Opera, Chrome and Edge. Everything below works the same in the three, except where Opera is named:
+Chrome and Edge have **tab groups** where Opera has islands, and no workspaces.
+
+**Opera**, loaded unpacked:
+
 1. `opera://extensions` → developer mode → **Load unpacked** → the `probe/` folder.
 2. The extension shows up in Opera's sidebar (the icon column on the left). Open its panel and **pin** it, so the
    panel sits next to the page instead of covering it.
@@ -14,6 +19,18 @@ Everything the extension does today, from the user's side. How it works inside i
 4. Turn off Opera's automatic Tab Islands: the extension manages islands itself and undoes other changes.
 
 Until it is dismissed, the **setup guide** above the tree lists steps 2–4; see Setup guide below.
+
+**Chrome and Edge**, until TabTree is in their stores: `npm run pack` makes `dist/chrome/` and `dist/edge/` (and the
+zip files for the stores, see ARCHITECTURE.md). In `chrome://extensions` or `edge://extensions`: developer mode →
+**Load unpacked** → that folder. Then:
+
+1. Pin TabTree to the toolbar: the Extensions button (a puzzle piece) lists it, with a pin in Chrome and an eye in
+   Edge. Its button opens the panel: Chrome's side panel, Edge's sidebar.
+2. In Chrome, Settings › Appearance › Side panel: **Show on left**. Edge keeps its sidebar on the right; there, turn
+   on Edge's vertical tabs (right-click a tab) and collapse them to a column of icons, as in Opera: the tab strip
+   leaves the top, the icons stay on the left and TabTree is on the right.
+
+The setup guide lists these steps too.
 
 ## The panel at a glance
 
@@ -25,14 +42,14 @@ Top to bottom:
 - **The list**: the tree of folders and tabs, with the setup guide above it until it is dismissed.
 - **Selection bar**, floating above the status bar while rows are selected: `3 selected`, what that is
   (`4 tabs, 1 folder`), **Folder**, **Close** and **✕**.
-- **Status bar**: what failed, what runs, what is finished and a site in trouble (see Statuses), then counters (`22 tabs · 4 folders · 4 tickets · +2 in Personal`), then **Islands** with a square in
-  the color of each island. A click on Islands opens Settings.
+- **Status bar**: what failed, what runs, what is finished and a site in trouble (see Statuses), then counters (`22 tabs · 4 folders · 4 tickets · +2 in Personal`), then **Islands** (**Groups** in Chrome
+  and Edge) with a square in the color of each island. A click on it opens Settings.
 
 **Log** and **Settings** take the place of the header and the list, under a bar of their own: **←** or Esc goes
 back to the tree. Short messages show above the status bar for a moment (see Messages).
 
-The panel shows the current window and the Opera workspace in use. It follows Opera's light or dark theme, and can
-show a picture of yours behind the tree (Settings › Background).
+The panel shows the current window and, in Opera, the workspace in use. It follows the browser's light or dark
+theme, and can show a picture of yours behind the tree (Settings › Background).
 
 ## Where a tab goes in the tree
 
@@ -47,7 +64,7 @@ show a picture of yours behind the tree (Settings › Background).
 
 A tab belongs to a ticket when its title or URL path carries a tracker key such as `PROJ-123`. Query strings don't
 count, so a board URL with `?selectedIssue=PROJ-1` is not that ticket's page. Look-alikes such as `UTF-8`, `ISO-…`,
-`SHA-256`, `CVE-2024` are ignored.
+`SHA-256`, `CVE-2024` are ignored, and so is the start of a YouTube channel id (`/channel/UC-9-…`).
 
 - **The ticket's root** is its Jira issue page (`[PROJ-123] …` in the title, or `/browse/PROJ-123`). When that page
   isn't open, the root is the ticket's first tab in the tab strip.
@@ -125,12 +142,15 @@ everything under it. The folder is named after the ticket, colored by its key, a
   empty.
 - The **Auto-folders** switch in Settings turns this off.
 
-## Islands (Opera's tab groups) mirror the folders
+## Islands (tab groups) mirror the folders
+
+Opera calls tab groups islands. In Chrome and Edge the panel says **tab groups** instead, and the rules are the same.
 
 - Every **top-level folder with two or more tabs** is shown in Opera's own tab strip as an island with the folder's
   name and color. The island holds every tab in the folder, however deep. Nested folders don't get islands of their
   own.
-- **A folder with one tab gets no island**: Opera doesn't keep one-tab islands.
+- **A folder with one tab gets no island**: Opera doesn't keep one-tab islands. Chrome and Edge could keep a
+  one-tab group, but follow the same rule.
 - **Every other tab is kept out of islands.** The mirror works one way: an island changed in Opera itself (tabs
   dragged in or out, a rename) is put back to match the folders.
 - Islands never span windows or workspaces. A folder with tabs in two of them gets one island in each.
@@ -270,7 +290,8 @@ doesn't make a copy: that tab comes forward, at the link's address and so reload
 - Tabs of other Opera workspaces sit under **Other workspaces** at the bottom of the tree, in a folded group per
   workspace, named after it: a flat list that can't be dragged. Switching workspaces in Opera switches the panel to
   that workspace.
-- A workspace with no tabs in the tree shows `No tabs in this workspace` and **New folder**.
+- A workspace with no tabs in the tree shows `No tabs in this workspace` and **New folder** (`No tabs in this
+  window` in Chrome and Edge).
 
 ## After a browser restart
 
@@ -287,6 +308,26 @@ matched neighbours. A tab whose parent didn't come back goes under the nearest a
 Does not survive: the folded state of tab rows (a tab's id changes on restart). The folded state of folders does
 survive.
 
+## Backup
+
+**Settings › Backup** saves the tree to a file and takes it back in: to move to another browser or profile, or to
+another copy of TabTree (the store's one), which starts with empty storage.
+
+- **Export** saves `tabtree-2026-09-30.json`: the folders, where the open tabs sit (by URL and place, the way a
+  restart keeps them), the order set by hand, the tickets under Never for, the switches and the background picture.
+  The setup guide's ticks stay behind, since its steps differ from browser to browser. The message reads
+  `Exported 4 folders and 52 tabs`.
+- **Import…** picks such a file:
+  - its folders **replace** the ones here;
+  - the open tabs it knows go back to their places and order, matched by URL in tab-strip order as after a restart.
+    Tabs it doesn't know stay where they are, and those that sat in a folder that is gone go to the top level;
+  - its switches and picture replace these, and its Never for tickets join these;
+  - the message reads `Imported 4 folders · 50 of 52 tabs back in place`. A file that isn't a backup changes
+    nothing.
+- The file doesn't open tabs. A folder whose tabs aren't open comes in empty; an automatic one then goes away.
+- **Moving to another copy in the same browser:** Export in the old copy, turn it off, install the new one, Import.
+  Two copies turned on at once would both manage the islands.
+
 ## Messages
 
 - A confirmation (`Report copied`, `Link copied`, `Links copied`) shows above the status bar for 2.5 seconds.
@@ -296,15 +337,15 @@ survive.
 ## Log view and report
 
 **Log** (in the header) shows the report live:
-- a summary: Opera's and Chromium's versions, the APIs (✓ available, ✗ missing), tabs, workspaces, folders,
+- a summary: the browser's and Chromium's versions, the APIs (✓ available, ✗ missing), tabs, workspaces, folders,
   placements, the snapshot, and the wallpaper when there is one;
 - **Events** or **Background changes**, newest first: each with its time and a tag for its kind (created, link,
-  place, folder, mirror, closed, restored, startup, title, favicon).
+  place, folder, mirror, closed, restored, imported, startup, title, favicon).
 
 **Copy report** in the Log view's bar, **Copy** in Settings › Diagnostics, or **Copy report** on an error message
 copies the report as plain text. If the clipboard refuses, the Log view shows the report selected, to copy by hand:
 Ctrl+C, then Esc. The report contains:
-- the Opera and Chromium versions;
+- the browser's and Chromium's versions;
 - the APIs available;
 - tab, workspace and folder counts;
 - the snapshot state;
@@ -316,7 +357,7 @@ It is meant for debugging: paste it into a session.
 
 ## Settings
 
-**Settings** in the header (or **Islands** in the status bar) opens the settings; **←** or Esc goes back. The
+**Settings** in the header (or **Islands** / **Groups** in the status bar) opens the settings; **←** or Esc goes back. The
 switches are on by default.
 
 - **Background**: **None** or **Image file**, a picture of yours behind the tree.
@@ -338,10 +379,11 @@ switches are on by default.
     out of it). **✕** on a ticket allows it again; if its family qualifies, the folder is made right away.
   - **Links from other apps**: a page opened from another app goes to the tab that already shows it (see Links from
     other apps).
-- **Opera**
-  - **Islands**: the island mirror.
+- **Opera** (**Chrome**, **Edge**: the section takes the browser's name)
+  - **Islands** (**Tab groups**): the mirror.
   - Every top-level folder with its state: `9 tabs · island`, `1 tab · no island, Opera needs 2`,
-    `0 tabs · no island`, or `islands are off`.
+    `0 tabs · no island`, or `islands are off` (in Chrome and Edge: `tab group`, `no tab group, needs 2`…).
+- **Backup**: **Export** saves the tree to a file, **Import…** takes one in; see Backup.
 - **Statuses**: showing them, the connected sites, dimming finished rows, marking changes; see below.
 - **Diagnostics**: **Report › Copy** copies the report; **Log › Open** opens the Log view.
 - **Setup**: **Setup guide › Show** brings the setup guide back above the tree.
@@ -417,7 +459,7 @@ pinned), on Esc, a click elsewhere, or scrolling. It answers "what am I waiting 
   Nothing about them is kept in the extension's code. A kind with no open page gets a line saying what to open.
 - Each site shows how it stands: `Connected · checked 12 s ago · 5 tickets`; `Signed out · last known 14:02` with
   **Sign in**; `Offline · VPN? last OK 13:40` with **Retry**; `Not connected: TabTree may not read this site` with
-  **Connect**, which asks Opera to let the extension read that site (Opera asks you).
+  **Connect**, which asks the browser to let the extension read that site (the browser asks you).
 - **⋯** on a connected site: **Test the connection** and **Disconnect**.
 - **Dim finished rows** and **Mark what changed while you were away**, both on by default.
 
@@ -444,13 +486,23 @@ pinned), on Esc, a click elsewhere, or scrolling. It answers "what am I waiting 
 
 ## Setup guide
 
-Until it is dismissed, a card above the tree lists what to set up in Opera, once:
+Until it is dismissed, a card above the tree lists what to set up in the browser, once (`Three things in Opera,
+once.`). In Opera:
 1. **Pin this panel**: the pin in the panel's title bar keeps it next to the page.
 2. **Collapse Opera's tabs**: Settings › Browser › Tabs: vertical tabs, collapsed to a column of icons.
 3. **Turn off automatic Tab Islands**: TabTree makes islands from your folders.
 
-- A click on a step ticks it (✓) or unticks it. Opera doesn't tell extensions any of this, so the steps are ticked
-  by hand.
+In Chrome:
+1. **Pin TabTree**: Extensions (the puzzle piece) › the pin next to TabTree. Its button opens this panel.
+2. **Put the side panel on the left**: Chrome's Settings › Appearance › Side panel: Show on left.
+
+In Edge:
+1. **Pin TabTree**: Extensions (the puzzle piece) › the eye next to TabTree. Its button opens this panel in the
+   sidebar.
+2. **Collapse Edge's tabs**: right-click a tab › Turn on vertical tabs, then collapse them to a column of icons.
+
+- A click on a step ticks it (✓) or unticks it. The browser doesn't tell extensions any of this, so the steps are
+  ticked by hand.
 - **Got it** hides the guide for good; **Settings › Setup guide › Show** brings it back.
 - **Later** hides it until the panel is opened again.
 
@@ -477,7 +529,7 @@ Until it is dismissed, a card above the tree lists what to set up in Opera, once
 | click | a row's status | pin the details card |
 | click | `2 failed`, `3 running` in the status bar | search for them |
 | click | `2 finished` in the status bar | offer to close them |
-| click | **Islands** in the status bar | open Settings |
+| click | **Islands** (**Groups**) in the status bar | open Settings |
 | click | a message | dismiss it |
 | `/` | anywhere | focus search (from Log or Settings too) |
 | ↑ ↓ Enter | search | move the highlight, open |
@@ -490,6 +542,7 @@ Until it is dismissed, a card above the tree lists what to set up in Opera, once
 ## Limitations and known gaps
 
 - **Opera's own tab strip** can only be collapsed, not removed, and the extension can't open its panel by itself.
+  Chrome's and Edge's can't be hidden by an extension either. Edge's sidebar, and so the panel, stays on the right.
 - **Full-screen video**: a pinned panel stays on screen next to a video in full screen. This is how Opera treats
   every pinned sidebar panel, and extensions have no API to hide or close their panel. Workaround: close the panel
   (its icon in Opera's sidebar), or unpin it, before going full screen.
@@ -502,5 +555,7 @@ Until it is dismissed, a card above the tree lists what to set up in Opera, once
   marker is not built.
 - **Hover-only buttons** are easy to miss; a right click gives the same menu as **⋯**.
 - **Statuses** come only from Jira, GitLab and Jenkins, and only for the pages of open tabs.
+- **Chrome and Edge** have been tried for the basics (the panel, the tree, tab groups); the details listed in
+  ARCHITECTURE.md › Chrome and Edge are still to be checked there one by one.
 - **The background picture comes from a file.** Following Opera's own start-page wallpaper needs a helper outside
   the browser (see ARCHITECTURE.md), so it is not offered yet.
