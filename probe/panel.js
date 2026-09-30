@@ -2,6 +2,7 @@ import { ticketKey, cleanTitle, rowLabel, kindLabel, hostOf, urlKey, islandName,
 import { buildTree, tabIdsUnder, nodeRef, folderRef } from './tree.js';
 import { icon } from './icons.js';
 import { tonesOf, wallTokens } from './wallpaper.js';
+import { detectSites, probeSite, originPattern, KIND_NAMES, PAGE_TO_OPEN } from './integrations.js';
 
 const $ = sel => document.querySelector(sel);
 const listEl = $('#list');
@@ -60,6 +61,10 @@ let paused = false; // rendering is frozen while dragging, renaming, a menu is o
 let missed = false; // something asked for a render while it was frozen
 let pendingRename = null; // a folder to rename as soon as it is drawn
 let guideLater = false; // "Later" on the setup guide hides it until the panel is opened again
+let granted = new Set(); // origin patterns Opera lets the extension request (optional host permissions)
+let apiProbe = {}; // the background's last probe answers, per site: { kind, origin, t, results } or { t, error }
+const panelProbes = new Map(); // this panel's own probe answers, per site
+const testing = new Set(); // sites whose probe is on its way
 
 async function load() {
   let list = await chrome.tabs.query({ currentWindow: true });
@@ -69,12 +74,14 @@ async function load() {
   tabs = current;
   otherIds = new Set(others.map(t => t.id));
   dupIds = findDuplicates(tabs);
-  const stored = await chrome.storage.local.get(['parents', 'folders', 'ranks', 'settings', 'declined']);
+  const stored = await chrome.storage.local.get(['parents', 'folders', 'ranks', 'settings', 'declined', 'apiProbe']);
   parents = stored.parents ?? {};
   folders = stored.folders ?? {};
   ranks = stored.ranks ?? {};
   settings = stored.settings ?? {};
   declined = stored.declined ?? {};
+  apiProbe = stored.apiProbe ?? {};
+  granted = new Set((await chrome.permissions?.getAll?.())?.origins ?? []);
 }
 
 // Opera lists the tabs of every workspace in one window and tags each with workspaceId/workspaceName.
@@ -1261,6 +1268,9 @@ function renderSettings() {
   if (!islands.childElementCount) islands.append(el('li', 'il m', 'No folders on the top level yet.'));
   out.append(islands);
 
+  section('Statuses (probe)');
+  out.append(sitesSettings());
+
   section('Diagnostics');
   option('Report', "Opera's version and APIs, counts, the snapshot and the last 60 events. Paste it into a session.",
     labelButton('btn sm', 'copy', 'Copy', 'Copy the report', copyReport));
@@ -1271,6 +1281,120 @@ function renderSettings() {
   option('Setup guide', "Pin the panel, collapse Opera's tab strip, turn off Opera's own Tab Islands.",
     button('btn sm', 'Show', 'Show the setup guide above the tree', showGuide));
   return out;
+}
+
+// ---- statuses: the probe ----
+// Settings › Statuses lists the Jira, GitLab and Jenkins sites behind the open tabs. Connect asks Opera to let
+// the extension request a site; Test asks the site's API, with the browser's session, who you are and about a
+// page of the open tabs, from the background (where statuses would be fetched) and from this panel.
+
+function sitesSettings() {
+  const out = document.createDocumentFragment();
+  out.append(el('div', 'wp-note', 'Can TabTree read the statuses of tickets and merge requests with your browser session, without tokens? Connect a site, then Test. Test only reads.'));
+  const sites = detectSites(allTabs);
+  if (sites.length) {
+    const list = el('ul', 'sites');
+    for (const site of sites) list.append(siteItem(site));
+    out.append(list);
+  }
+  // Only the sites of open tabs are listed, so say how to bring in a missing one.
+  const absent = Object.keys(KIND_NAMES).filter(kind => !sites.some(s => s.kind === kind));
+  if (absent.length) {
+    const names = absent.map(kind => KIND_NAMES[kind]).join(' or ');
+    const pages = absent.map(kind => PAGE_TO_OPEN[kind]).join(' or ');
+    out.append(el('div', 'wp-note', `No ${names} here: open ${pages}, and ${absent.length > 1 ? 'the site shows' : 'its site shows'} up.`));
+  }
+  return out;
+}
+
+function siteItem(site) {
+  const li = el('li', 'site');
+  li.dataset.site = site.base;
+  const head = el('div', 'head');
+  const name = el('span', 'grow', site.base.replace(/^https?:\/\//, ''));
+  name.title = site.base;
+  head.append(el('span', 'kind', KIND_NAMES[site.kind]), name);
+  if (!granted.has(originPattern(site))) {
+    head.append(button('btn sm primary', 'Connect', `Let TabTree request ${site.origin}`, () => connectSite(site)));
+  } else {
+    const busy = testing.has(site.base);
+    const test = button('btn sm primary', busy ? 'Testing…' : 'Test', 'Ask the site who you are, and about a page of the open tabs', () => testSite(site));
+    test.disabled = busy;
+    head.append(test, button('btn sm', 'Disconnect', `Take back the access to ${site.origin}`, () => disconnectSite(site)));
+  }
+  const asks = [
+    'who you are',
+    site.keys.length && `${plural(site.keys.length, 'ticket')} of the open tabs`,
+    site.mrs.length && 'a merge request and its approvals',
+    site.pipelines.length && 'a pipeline',
+    site.jobs.length && 'a job',
+    site.builds.length && 'a build',
+  ].filter(Boolean);
+  const sampled = { jira: site.keys, gitlab: site.mrs, jenkins: site.builds }[site.kind].length > 0;
+  li.append(head, el('div', 'm', `Asks for ${asks.join(', ')}.${sampled ? '' : ` Open ${PAGE_TO_OPEN[site.kind]} to try one too.`}`));
+  if (apiProbe[site.base]) li.append(checkList('From the background', apiProbe[site.base]));
+  if (panelProbes.has(site.base)) li.append(checkList('From this panel', panelProbes.get(site.base)));
+  return li;
+}
+
+function checkList(title, entry) {
+  const box = el('div', 'checks');
+  box.append(el('div', 'ctx', `${title} · ${clock(entry.t)}`));
+  const results = entry.error ? [{ name: 'No answer', ok: false, text: entry.error }] : entry.results;
+  for (const { name, ok, text } of results) {
+    const line = el('div', ok ? 'check' : 'check bad');
+    line.append(icon(ok ? 'done' : 'close', 'i s'), el('b', null, name), el('span', null, text));
+    box.append(line);
+  }
+  return box;
+}
+
+// Opera asks the user itself, and only for a request made right in the click, before anything is awaited.
+function connectSite(site) {
+  if (!chrome.permissions?.request) return toast('This panel has no permissions API', { error: true });
+  chrome.permissions.request({ origins: [originPattern(site)] }).then(
+    yes => {
+      if (!yes) toast(`${hostOf(site.origin)}: access not given`, { error: true });
+      refresh();
+    },
+    e => toast(`Connect failed: ${e.message}`, { error: true }),
+  );
+}
+
+function disconnectSite(site) {
+  chrome.permissions.remove({ origins: [originPattern(site)] }).then(refresh, e => toast(`Disconnect failed: ${e.message}`, { error: true }));
+}
+
+async function testSite(site) {
+  testing.add(site.base);
+  render();
+  const [fromBackground, fromPanel] = await Promise.all([
+    chrome.runtime.sendMessage({ type: 'probeApi', site }).catch(e => ({ error: e.message })),
+    probeSite(site).then(results => ({ t: Date.now(), results })),
+  ]);
+  const { ok, error, ...entry } = fromBackground ?? {};
+  apiProbe = { ...apiProbe, [site.base]: ok ? entry : { t: Date.now(), error: error ?? 'no answer' } };
+  panelProbes.set(site.base, fromPanel);
+  testing.delete(site.base);
+  render();
+}
+
+// For the report: each site with its checks, from the background and from this panel.
+function probeLines() {
+  const sites = new Map(detectSites(allTabs).map(s => [s.base, s]));
+  for (const [base, entry] of Object.entries(apiProbe)) {
+    if (!sites.has(base) && entry.kind) sites.set(base, { kind: entry.kind, origin: entry.origin, base });
+  }
+  const lines = [];
+  for (const site of sites.values()) {
+    lines.push(`- ${KIND_NAMES[site.kind]} ${site.base}: ${granted.has(originPattern(site)) ? 'connected' : 'not connected'}`);
+    for (const [where, entry] of [['background', apiProbe[site.base]], ['panel', panelProbes.get(site.base)]]) {
+      if (!entry) continue;
+      const checks = entry.error ? `no answer: ${entry.error}` : entry.results.map(r => `${r.ok ? '✓' : '✗'} ${r.name}: ${r.text}`).join(' · ');
+      lines.push(`  - ${where} ${clock(entry.t)}: ${checks}`);
+    }
+  }
+  return lines;
 }
 
 // ---- the whole panel ----
@@ -1466,7 +1590,10 @@ async function buildReport() {
     `- Tab placements: ${d.placed} of ${tabs.length} tabs; ticket keys: ${d.keyed} tabs, ${d.keys} distinct`,
     `- Snapshot for restarts: ${d.snapshot}`,
     `- Wallpaper: ${wallpaperLine()}`,
+    `- Statuses probe: permissions API ${yes(chrome.permissions)}; connected: ${[...granted].join(', ') || 'none'}`,
   ];
+  const probes = probeLines();
+  if (probes.length) lines.push('', '### Statuses probe', ...probes);
   lines.push('', '### Events', '```', ...d.log.map(fmtEvent), '```');
   lines.push('', '### Background tab changes', '```', ...d.changes.map(fmtEvent), '```');
   return lines.join('\n');
@@ -1547,6 +1674,11 @@ async function renderLog() {
   item('Placements', `${d.placed} of ${tabs.length} tabs · keys on ${d.keyed} tabs, ${d.keys} distinct`);
   item('Snapshot', d.snapshot);
   if (wallpaper) item('Wallpaper', wallpaperLine());
+  const probed = Object.values(apiProbe).filter(p => p.results);
+  item('Statuses', [
+    `${plural(detectSites(allTabs).length, 'site')} in tabs · ${granted.size} connected`,
+    ...probed.map(p => `${KIND_NAMES[p.kind]} ${p.results.filter(r => r.ok).length} of ${p.results.length} checks`),
+  ].join(' · '));
   const seg = el('div', 'seg');
   seg.setAttribute('role', 'tablist');
   for (const [id, name, list, title] of [
@@ -2011,6 +2143,8 @@ function refresh() {
 for (const name of ['onCreated', 'onRemoved', 'onUpdated', 'onMoved', 'onActivated', 'onAttached', 'onDetached', 'onReplaced']) {
   chrome.tabs[name]?.addListener(refresh);
 }
+chrome.permissions?.onAdded?.addListener(refresh);
+chrome.permissions?.onRemoved?.addListener(refresh);
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   if ('wallpaper' in changes) loadWallpaper();

@@ -42,6 +42,7 @@ probe/                 the extension, loaded unpacked as it is
   panel.html/.css/.js  the sidebar UI: draws the tree, sends commands, never writes the tree itself
   icons.js             the panel's SVG icons and icon(name)
   wallpaper.js         the wallpaper's scrim and accent colors from a sample of its pixels (pure)
+  integrations.js      the statuses probe: Jira/GitLab/Jenkins sites in tabs, read-only API checks with the session
   icons/               PNG icons of the extension
 tests/                 scenario tests on fakes (jsdom, a fake Opera); helpers in tests/helpers/
 docs/                  see above
@@ -60,6 +61,8 @@ docs/                  see above
   - Every change to the tree is a background command: `place`, `newFolder`, `renameFolder`, `colorFolder`,
     `deleteFolder`, `closeItems`, `allowAutoFolder`. The panel redraws from storage. It writes only `settings`
     and `wallpaper` itself; the wallpaper has a key of its own, so that its sliders reload no tree.
+  - Work sites (Jira, GitLab, Jenkins hosts) never go into the repo: the manifest has only
+    `optional_host_permissions`, and a site is granted at runtime from Settings.
   - Tab ids change with every browser session. Anything keyed by a tab id must go through the snapshot to survive a
     restart.
   - Islands are output only. Each top-level folder with 2+ tabs is an island; every other tab is kept out of

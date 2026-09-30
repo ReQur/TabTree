@@ -219,11 +219,16 @@ icon and **Copy report**.
   the report in a text area, selected, on `--sel` with an accent outline.
 
 **Settings view** (`.settings`, under the bar):
-- Section labels (`.sub`): **Background**, **Tree**, **Opera**, **Diagnostics**, **Setup**.
+- Section labels (`.sub`): **Background**, **Tree**, **Opera**, **Statuses (probe)**, **Diagnostics**, **Setup**.
 - Options (`.opt`): a bold name (a label for switches), a muted description, and on the right a switch
   (`input.switch`, 30×18, accent when on) or a small button.
 - **Never for**: chips (`.chip`) with the key and a ✕ button, inside the Auto-folders option.
 - Islands: a bordered list (`.islands`, `.il`): color square, name, `9 tabs · island` (or why not).
+- Statuses (probe): a note (`.wp-note`), then a bordered list of sites (`.sites`, `.site`): a line (`.head`) with the
+  kind (`.kind`: Jira, GitLab, Jenkins), the host, and **Connect**, or **Test** (`Testing…` while it runs) and
+  **Disconnect**; a muted line of what Test asks for (`.m`); then the answers, from the background and from this
+  panel (`.checks`, `.ctx` with the time), one per line (`.check`, `.check.bad`): a tick in `--ok` or a cross in
+  `--danger`, the check's name in bold, the answer muted. Minimal styling: it is a probe.
 - Background: see below.
 
 ## The wallpaper mode
@@ -319,7 +324,9 @@ selection bar cuts its description first, and at 300px and less its buttons lose
     (a tick icon when done), `.steps li.done`, `.steps li b`;
   - empty states: `#list .empty h4`, `.empty p`, `.empty button` by text;
   - Settings: `.settings .sub`, `.opt b`, `.opt button`, `#set-auto-folders`, `#set-mirror`, `.chip[data-key] button`,
-    `.chips .muted`, `.islands .il .grow`, `.il .m`;
+    `.chips .muted`, `.islands .il .grow`, `.il .m`, `.site[data-site]`, `.site .head button` by text (`Connect`,
+    `Test`, `Testing…`, `Disconnect`), `.site .m`, `.checks .ctx`, `.check`, `.check.bad`, `.check b`,
+    `.check span`;
   - the Log view: `.logv .kv dt`, `.ev .t` (and its `c-<color>`), `.ev p`, `.seg button`, `.seg button.on`,
     `.banner`, `textarea.report`;
   - search: `.row.hit`, `.hit .key`, `.hit .kind`, `.meta span`, `.crumbs`, `.crumbs .sq`, `mark`, `.badge.ws`,

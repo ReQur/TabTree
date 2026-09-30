@@ -1,13 +1,14 @@
 // Loads probe/panel.js into jsdom with a fake chrome API: the given tabs and stored tree, and recorders for
 // what the panel does: messages to the background, tabs opened, closed, reloaded or unloaded, text copied,
-// settings and the wallpaper written or removed, drag images set. Rows are 20px tall for drag and drop:
+// settings and the wallpaper written or removed, drag images set, site permissions asked for. There is no
+// network: pass `fetch` to answer the panel's own requests. Rows are 20px tall for drag and drop:
 // y < 6 is the upper edge ("before"), y > 14 the lower edge ("after"), anything between is "inside".
 // Icon-only buttons are found by their aria-label.
 import { JSDOM } from 'jsdom';
 import fs from 'node:fs';
 import { wait } from './check.js';
 
-export async function loadPanel({ tabs, store, onMessage = () => {} }) {
+export async function loadPanel({ tabs, store, onMessage = () => {}, granted = [], fetch }) {
   const html = fs
     .readFileSync(new URL('../../probe/panel.html', import.meta.url), 'utf8')
     .replace(/<script[^>]*><\/script>/, '');
@@ -22,6 +23,9 @@ export async function loadPanel({ tabs, store, onMessage = () => {} }) {
   const sets = [];
   const dragImages = [];
   const storageListeners = [];
+  // Opera's optional host permissions: what is given, what was asked for, and whether the next ask is granted.
+  const permissions = { granted: new Set(granted), asked: [], removed: [], answer: true };
+  const permissionListeners = [];
   const notify = changed => {
     for (const l of storageListeners) l({ [changed]: {} }, 'local');
   };
@@ -39,12 +43,14 @@ export async function loadPanel({ tabs, store, onMessage = () => {} }) {
     },
     tabGroups: { query: async () => [] },
     runtime: {
-      // onMessage may change `store` like the background would, and returns the storage key it changed.
+      // onMessage may change `store` like the background would, and returns the storage key it changed, or
+      // { reply, changed } to answer with something else than { ok: true }.
       sendMessage: async m => {
         sent.push(m);
-        const changed = onMessage(m, store);
+        const out = await onMessage(m, store);
+        const changed = typeof out === 'string' ? out : out?.changed;
         if (changed) notify(changed);
-        return { ok: true };
+        return out?.reply ?? { ok: true };
       },
     },
     storage: {
@@ -65,7 +71,28 @@ export async function loadPanel({ tabs, store, onMessage = () => {} }) {
       session: { get: async () => ({}) },
       onChanged: { addListener: fn => storageListeners.push(fn) },
     },
+    permissions: {
+      getAll: async () => ({ origins: [...permissions.granted], permissions: [] }),
+      request: async ({ origins }) => {
+        permissions.asked.push(...origins);
+        if (!permissions.answer) return false;
+        for (const o of origins) permissions.granted.add(o);
+        for (const l of permissionListeners) l({ origins });
+        return true;
+      },
+      remove: async ({ origins }) => {
+        permissions.removed.push(...origins);
+        for (const o of origins) permissions.granted.delete(o);
+        for (const l of permissionListeners) l({ origins });
+        return true;
+      },
+      onAdded: { addListener: fn => permissionListeners.push(fn) },
+      onRemoved: { addListener: fn => permissionListeners.push(fn) },
+    },
   };
+  globalThis.fetch = fetch ?? (async () => {
+    throw new TypeError('Failed to fetch');
+  });
   w.HTMLElement.prototype.scrollIntoView = () => {};
   w.HTMLElement.prototype.getBoundingClientRect = () => ({ top: 0, height: 20 });
   Object.defineProperty(w.navigator, 'clipboard', { value: { writeText: async t => copied.push(t) }, configurable: true });
@@ -123,7 +150,7 @@ export async function loadPanel({ tabs, store, onMessage = () => {} }) {
   };
 
   return {
-    w, $, rows, row, click, selected, fire, drag, key, sent, activated, removed, reloaded, discarded, copied, sets, store,
+    w, $, rows, row, click, selected, fire, drag, key, sent, activated, removed, reloaded, discarded, copied, sets, store, permissions,
     dragImages, menu, hint, rightClick, more, pick, buttons, hoverButton, mousedown, search, last: () => sent.at(-1),
   };
 }

@@ -16,6 +16,8 @@ Opera: tabs, islands (tab groups), workspaces
 
 - `manifest.json`: MV3. Declares `sidebar_action` (Opera's own sidebar API; Opera has no `chrome.sidePanel`), a
   module service worker, and the permissions `tabs`, `webNavigation`, `storage`, `tabGroups`, `clipboardWrite`.
+  `optional_host_permissions` (`https://*/*`, `http://*/*`) grants nothing by itself: Settings › Statuses asks
+  Opera for one site's origin at a time, so no work host is ever written into the repo.
 - `background.js`: the only writer of the tree.
   - Records openers when tabs open.
   - Handles the panel's commands.
@@ -33,6 +35,9 @@ Opera: tabs, islands (tab groups), workspaces
   - Also draws Settings, the Log view and the setup guide, builds the diagnostics report, and draws the wallpaper.
 - `icons.js`: the panel's 27 icons as SVG shapes, and `icon(name)`, which clones a cached `<svg>`.
 - `wallpaper.js`: pure. The wallpaper's colors from a small sample of its pixels: `tonesOf()` and `wallTokens()`.
+- `integrations.js`: the statuses probe. `detectSites(tabs)` finds the Jira, GitLab and Jenkins sites behind the
+  tabs, with a few pages of each to try; `probeSite(site)` asks their APIs with the session (fetch is passed in by
+  the tests).
 - `icons/`: generated PNGs (16, 32, 48, 128), the extension's own icon.
 
 No build step and no runtime dependencies. `package.json` exists only for the tests (jsdom).
@@ -49,6 +54,7 @@ No build step and no runtime dependencies. `package.json` exists only for the te
 | `settings` | `{ autoFolders?: bool, mirrorIslands?: bool, onboarded?: bool, setup?: { pin?, tabs?, islands?: bool } }` | the Settings switches (missing = on), written by the panel. `onboarded` = the setup guide was dismissed with Got it; `setup` = its steps ticked by hand. |
 | `wallpaper` | `{ source: "file" \| "none", name, dataUrl, width, height, w, h, bytes, tones: { vivid, dark, mean }, x, dim, blur, accent: "blue" \| "wallpaper" }` | the picture behind the panel with its settings (Settings › Background), written by the panel. `width`/`height` are the file's size, `w`/`h` and `bytes` the stored JPEG's; `tones` are `[r, g, b]` colors from `tonesOf()`; `x` (0–100), `dim` (0–100), `blur` (px). `source: "none"` keeps the picture but doesn't draw it. A key of its own, so that a slider's change reloads no tree (see The wallpaper). |
 | `declined` | `{ [ticketKey]: true }` | tickets never to get an automatic folder again. Shown in Settings › Never for; `allowAutoFolder` removes one. |
+| `apiProbe` | `{ [site base]: { kind, origin, t, results: [{ name, ok, text }] } }` | the background's last answers of the statuses probe, for Settings and the report. Written by the background. |
 | `snapshot` | `{ savedAt, tabs: [{ url, title, parent, rank? }] }` | the tree for the next session; see Restarts. |
 | `log`, `changes` | arrays of events (last 200 / 100) | for the report. |
 
@@ -81,6 +87,32 @@ at a time and wait until the start-up restore is done.
 | `allowAutoFolder` | `key` | removes the key from `declined` and schedules a tidy pass, so a family that qualifies gets its folder right away. |
 
 A ref is `"t:<tabId>"` or `"f:<folderId>"` (`nodeRef()` in tree.js).
+
+**Queries** change no tree and run beside the commands' queue, without waiting for it or for the restore, so that a
+slow site can't hold up a drop. Their reply carries the answer.
+
+| type | payload | answers |
+|---|---|---|
+| `probeApi` | `site` (from `detectSites()`) | `{ ok: true, kind, origin, t, results }`, and keeps it under `apiProbe`. Only `jira`, `gitlab` and `jenkins` sites with an http(s) base. |
+
+## The statuses probe
+
+- **Requests** (`ask()` in integrations.js): `credentials: 'include'`, so the browser's cookies for the site go
+  along; `redirect: 'manual'`, because an API that redirects is sending to a login page or an auth proxy;
+  `Accept: application/json`; 8 s timeout. All checks of a site run at once.
+- **What is asked:**
+  - Jira (`/rest/api/3`): `myself`; `issue/<key>?fields=status`; `search/jql` with `key in (…)` (the old `search` is
+    switched off on Jira Cloud); `POST issue/bulkfetch` with `X-Atlassian-Token: no-check`, which Jira wants from a
+    POST made with a session;
+  - GitLab (`/api/v4`): `user`; `projects/<path>/merge_requests/<iid>` and its `approvals`; `pipelines/<id>`;
+    `jobs/<id>`. The project path comes from the page's URL, before `/-/`;
+  - Jenkins: `whoAmI/api/json` (anonymous means the session didn't come along); `<build>/api/json?tree=…`.
+- **Answers** read as `{ name, ok, text }`: a short text from the JSON, or why not (HTTP status with the server's own
+  message, a redirect, a web page instead of JSON, a network error, a timeout, JSON of another shape).
+- **Two places.** The panel runs the same checks itself and keeps its answers in memory (`panelProbes`), so that the
+  report shows whether the background and the panel differ. Access comes from `chrome.permissions.request`, which
+  has to be called right in the click; `load()` reads what is granted with `permissions.getAll()`, and
+  `permissions.onAdded` / `onRemoved` refresh the panel.
 
 ## The background
 
@@ -291,6 +323,14 @@ A picture behind the panel (Settings › Background), stored under `wallpaper`.
     seconds;
   - Ctrl+T tabs and browser pages get the active tab as opener, which is meaningless.
 - **Other tab fields**: there is also `splitViewId` (Opera's split screen), unused so far.
+- **Site access with the browser's session** (the statuses probe, 2026-09-30):
+  - `chrome.permissions.request({ origins })` from the sidebar panel's click shows Opera's prompt and grants the
+    origin, and `permissions.remove` takes it back;
+  - with the origin granted, `fetch(url, { credentials: 'include' })` from the service worker and from the panel
+    both carry the browser's cookies: Jira Cloud's REST API, a self-hosted GitLab's API v4 (user, merge request,
+    approvals) and a self-hosted Jenkins all answered as the signed-in user, so statuses need no tokens;
+  - Jira Cloud also took a session POST (`issue/bulkfetch`) with `X-Atlassian-Token: no-check`, so one request can
+    fetch the statuses of every ticket in the tabs.
 - **Title flapping**: messengers pinned in the browser can change their title and favicon every second (unread
   counters).
 - **Not available**: `tabs.hide` and `sessions.setTabValue` are Firefox-only, so tabs can't be hidden and nothing
@@ -309,10 +349,12 @@ A picture behind the panel (Settings › Background), stored under `wallpaper`.
 
 - `tests/helpers/opera-fake.js` is a fake of the Opera APIs the background uses: tabs, islands that vanish when
   empty, storage, events. `open()` opens a tab, `close()` closes one, `setGroup()` imitates a change made in Opera,
-  and `ask()` sends a panel command.
+  and `ask()` sends a panel command or query.
 - `tests/helpers/panel-env.js` loads `panel.html` + `panel.js` into jsdom with a fake API. It records the messages
   the panel sends, the tabs it opens, closes, reloads and unloads, the text it copies and the settings it writes
-  (`storage.local.set` updates the store and notifies the panel, as Opera does). Its helpers `click` / `drag` /
+  (`storage.local.set` updates the store and notifies the panel, as Opera does). It fakes Opera's optional
+  permissions (`granted`, and `permissions.answer` for the next request) and the network (`fetch`; without it every
+  request fails). `onMessage` may answer with `{ reply }`. Its helpers `click` / `drag` /
   `fire` / `key` / `selected` / `search` look rows up by text; `rightClick` / `more` / `menu` / `hint` / `pick` open
   menus and use them.
 - `tests/helpers/check.js`: `check(label, ok)` prints PASS/FAIL and fails the file on FAIL.
@@ -334,6 +376,9 @@ A picture behind the panel (Settings › Background), stored under `wallpaper`.
 | `panel-empty.test.js` | an empty workspace |
 | `panel-wallpaper.test.js` | Settings › Background: a stored picture drawn, Dim, Blur, the frame, the accent, None, Remove, another panel's change, the report line |
 | `wallpaper.test.js` | the tones of made-up pixels and the tokens made from them: hue, contrast, a grey picture |
+| `integrations.test.js` | the statuses probe: sites and pages found in tabs, the requests made, how each kind of answer reads |
+| `probe-api.test.js` | the `probeApi` query in the background: the answer, what is kept, what is refused |
+| `panel-statuses.test.js` | Settings › Statuses: sites, Connect (refused, given), Test from both places, the report, Disconnect |
 
 Everything is tested against fakes, never against real Opera. After a change, ask the repo owner to reload the
 extension and look, or to paste **Copy report**. The panel tests find elements by id and class (`#list .row`,

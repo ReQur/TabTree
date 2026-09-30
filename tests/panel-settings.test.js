@@ -64,7 +64,7 @@ check('two quick clicks tick both steps', store.settings.setup.pin === true && s
 check('"Later" hides the guide without remembering it', !$('.card') && store.settings.onboarded === undefined);
 
 view('settings');
-check(`Settings: ${texts('.settings .sub')}`, texts('.settings .sub').join() === 'Background,Tree,Opera,Diagnostics,Setup' && shown() === 'settings' && !$('.card') && $('#hdr').hidden && $('#view-title').textContent === 'Settings');
+check(`Settings: ${texts('.settings .sub')}`, texts('.settings .sub').join() === 'Background,Tree,Opera,Statuses (probe),Diagnostics,Setup' && shown() === 'settings' && !$('.card') && $('#hdr').hidden && $('#view-title').textContent === 'Settings');
 check('both switches are on by default', $('#set-auto-folders').checked && $('#set-mirror').checked);
 check(`tickets kept out of automatic folders, sorted: ${texts('.chip')}`, texts('.chips .muted').join() === 'Never for' && all('.chip').map(c => c.dataset.key).join() === 'ABC-1,PROJ-77');
 const allow = $('.chip[data-key="PROJ-77"] button');
@@ -91,7 +91,7 @@ check('Report › Copy copies the report', p.copied.at(-1)?.startsWith('## TabTr
 option('Log').querySelector('button').click();
 await wait(50);
 check('Log › Open opens the log', shown() === 'log' && !!$('.logv .kv') && !$('#report').hidden && $('#view-title').textContent === 'Log');
-check(`the Log view sums the report up: ${texts('.kv dt')}`, texts('.kv dt').join() === 'Opera,APIs,Tabs,Workspaces,Folders,Placements,Snapshot');
+check(`the Log view sums the report up: ${texts('.kv dt')}`, texts('.kv dt').join() === 'Opera,APIs,Tabs,Workspaces,Folders,Placements,Snapshot,Statuses');
 const events = () => all('.ev').map(e => `${e.querySelector('.t').textContent}: ${e.querySelector('p').textContent}`);
 check(`then the events, newest first, tagged by kind: ${events().join(' / ')}`,
   events().join(' / ') === 'mirror: 1 island, 1 tab moved in, 0 taken out / place: t:4 under f:rel / created: #4 from #3 wiki.example.com → example.com'

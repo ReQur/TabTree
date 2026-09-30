@@ -3,6 +3,7 @@
 import { hostOf, ticketKey, colorFor, islandName } from './titles.js';
 import { buildTree, tabIdsUnder, pickRoot, nodeRef, folderRef } from './tree.js';
 import { snapshotOf, matchTabs, restoredParents, restoredRanks } from './snapshot.js';
+import { probeSite } from './integrations.js';
 
 const LIMITS = { log: 200, changes: 100 };
 // Browser pages (settings, extensions, the start page) get the active tab as opener; that link means nothing.
@@ -257,10 +258,31 @@ async function allowAutoFolder({ key }) {
   scheduleMirror();
 }
 
+// Settings › Statuses: the probe asks a site's API from here, where statuses would be fetched from, and keeps
+// the answers for the report.
+async function probeApi({ site }) {
+  if (!['jira', 'gitlab', 'jenkins'].includes(site?.kind) || !/^https?:\/\//.test(site.base)) throw new Error('not a site to probe');
+  const results = await probeSite(site);
+  const entry = { kind: site.kind, origin: site.origin, t: Date.now(), results };
+  await update('apiProbe', (all = {}) => ({ ...all, [site.base]: entry }));
+  return entry;
+}
+
 const commands = { place, newFolder, renameFolder, colorFolder, deleteFolder, closeItems, allowAutoFolder };
+// Questions that change no tree run beside the commands' queue, so that a slow site can't hold up a drop. Their
+// answer comes with the reply.
+const queries = { probeApi };
 let running = Promise.resolve();
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+  const query = queries[msg?.type];
+  if (query) {
+    query(msg).then(
+      answer => reply({ ok: true, ...answer }),
+      e => reply({ ok: false, error: e.message }),
+    );
+    return true;
+  }
   const command = commands[msg?.type];
   if (!command) return false;
   const job = running.then(() => ready).then(() => command(msg));

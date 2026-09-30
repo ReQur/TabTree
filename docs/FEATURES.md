@@ -323,8 +323,32 @@ switches are on by default.
   - **Islands**: the island mirror.
   - Every top-level folder with its state: `9 tabs · island`, `1 tab · no island, Opera needs 2`,
     `0 tabs · no island`, or `islands are off`.
+- **Statuses (probe)**: see below.
 - **Diagnostics**: **Report › Copy** copies the report; **Log › Open** opens the Log view.
 - **Setup**: **Setup guide › Show** brings the setup guide back above the tree.
+
+## Statuses of tickets and merge requests: the probe
+
+Showing the status of a ticket, a merge request, a pipeline or a build on its row is planned. First, the probe finds
+out whether the extension can read them with the browser's own session, without tokens: **Settings › Statuses
+(probe)**.
+
+- **The sites** are the Jira, GitLab and Jenkins sites behind the open tabs:
+  - Jira: an issue page (`/browse/PROJ-1`), a site on `atlassian.net`, or a title ending in `- Jira`;
+  - GitLab: a merge request, pipeline or job page (`/-/merge_requests/42`), or a title ending in `· GitLab`;
+  - Jenkins: a title ending in `[Jenkins]` or `- Jenkins`;
+  - any page of a host named after its tool (`gitlab.example.com`, `jira.example.com`, `jenkins.example.com`).
+  Nothing about them is kept in the extension's code. A kind with no open page gets a line saying what to open (a
+  ticket, a merge request, a build); so does a site whose open pages give nothing to try beyond who you are.
+- **Connect** asks Opera to let the extension request that site; Opera asks you. **Disconnect** takes it back.
+- **Test** only reads. It asks the site who you are, then about pages of the open tabs:
+  - Jira: a ticket's status, the same tickets by a JQL search, and by a bulk fetch (a POST);
+  - GitLab: a merge request (state, draft, merge status, pipeline), its approvals, a pipeline, a job;
+  - Jenkins: a build's result.
+- It asks twice, from the background (where statuses would be fetched from) and from the panel, and shows every
+  answer: `✓ Signed in: yes`, `✓ A ticket: In Progress · indeterminate`, or why not: `HTTP 401 · not signed in`,
+  `redirected, likely to a login page`, `a web page instead of JSON`, `network error`, `no answer in 8 s`.
+- The report has the answers too, with the connected sites.
 
 ## Setup guide
 
@@ -381,5 +405,6 @@ Until it is dismissed, a card above the tree lists what to set up in Opera, once
 - **Title and favicon changes of background tabs** are only logged. The planned "changed while you weren't looking"
   marker is not built.
 - **Hover-only buttons** are easy to miss; a right click gives the same menu as **⋯**.
+- **Statuses of tickets and merge requests** aren't shown yet; Settings has only the probe for them.
 - **The background picture comes from a file.** Following Opera's own start-page wallpaper needs a helper outside
   the browser (see ARCHITECTURE.md), so it is not offered yet.
