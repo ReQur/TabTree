@@ -1,17 +1,25 @@
 // A small fake of the Opera APIs that probe/background.js uses: tabs with islands (tab groups), storage,
-// and the events the background listens to. Empty islands vanish, as they do in Opera.
+// and the events the background listens to. Empty islands vanish, as they do in Opera. Sites given access to
+// (`granted`, then grant() / revoke()) and alarms are faked too; the network isn't: set globalThis.fetch.
+//
+// Storage gives back what Opera's does: copies with their keys sorted (see stored.js).
 //
 // makeOpera() puts the fake on globalThis.chrome; import the background afterwards. A second session in the
 // same process needs a fresh module instance: import('../probe/background.js?session=2').
 
-export function makeOpera({ tabs: initial = [], groups: initialGroups = [], local = {}, session = {} } = {}) {
+import { asStored } from './stored.js';
+
+export function makeOpera({ tabs: initial = [], groups: initialGroups = [], local = {}, session = {}, granted: given = [] } = {}) {
   const listeners = {};
   const storageListeners = [];
   const on = name => ({ addListener: fn => { listeners[name] = fn; } });
   const defaults = { windowId: 1, pinned: false, groupId: -1, workspaceId: 'w', status: 'complete', title: '' };
   const tabs = new Map(initial.map(t => [t.id, { ...defaults, index: t.id, ...t }]));
+  const granted = new Set(given);
+  const alarms = new Map();
   const groups = new Map(initialGroups.map(g => [g.id, { windowId: 1, ...g }]));
   let nextGroup = 500;
+  let nextTab = 1000;
   const snap = id => ({ ...tabs.get(id) });
   const dropIfEmpty = gid => {
     if (gid !== -1 && ![...tabs.values()].some(t => t.groupId === gid)) groups.delete(gid);
@@ -32,7 +40,7 @@ export function makeOpera({ tabs: initial = [], groups: initialGroups = [], loca
   const chrome = {
     storage: {
       local: {
-        get: async k => Object.fromEntries((Array.isArray(k) ? k : [k]).filter(x => x in local).map(x => [x, structuredClone(local[x])])),
+        get: async k => Object.fromEntries((Array.isArray(k) ? k : [k]).filter(x => x in local).map(x => [x, asStored(local[x])])),
         set: async o => {
           Object.assign(local, structuredClone(o));
           const changes = Object.fromEntries(Object.keys(o).map(k => [k, { newValue: o[k] }]));
@@ -41,7 +49,7 @@ export function makeOpera({ tabs: initial = [], groups: initialGroups = [], loca
         remove: async keys => [].concat(keys).forEach(k => delete local[k]),
       },
       session: {
-        get: async k => (k in session ? { [k]: structuredClone(session[k]) } : {}),
+        get: async k => (k in session ? { [k]: asStored(session[k]) } : {}),
         set: async o => Object.assign(session, structuredClone(o)),
       },
       onChanged: { addListener: fn => storageListeners.push(fn) },
@@ -59,6 +67,14 @@ export function makeOpera({ tabs: initial = [], groups: initialGroups = [], loca
         return gid;
       },
       ungroup: async tabIds => tabIds.forEach(id => setGroup(id, -1)),
+      // As Opera does, a tab made by an extension gets the tab in view as its opener, whatever it was asked for.
+      create: async ({ url, active = true } = {}) => {
+        const id = nextTab++;
+        const inView = [...tabs.values()].find(t => t.active);
+        tabs.set(id, { ...defaults, id, index: tabs.size, url: '', pendingUrl: url, active, openerTabId: inView?.id });
+        listeners.created(snap(id));
+        return snap(id);
+      },
       remove: async ids => [].concat(ids).forEach(close),
       onCreated: on('created'),
       onRemoved: on('removed'),
@@ -75,6 +91,17 @@ export function makeOpera({ tabs: initial = [], groups: initialGroups = [], loca
         Object.assign(groups.get(gid), p);
       },
     },
+    permissions: {
+      getAll: async () => ({ origins: [...granted], permissions: [] }),
+      onAdded: on('permissionsAdded'),
+      onRemoved: on('permissionsRemoved'),
+    },
+    alarms: {
+      create: async (name, info) => void alarms.set(name, { name, ...info }),
+      get: async name => alarms.get(name),
+      clear: async name => alarms.delete(name),
+      onAlarm: on('alarm'),
+    },
     webNavigation: { onCreatedNavigationTarget: on('navTarget') },
     runtime: { onInstalled: on('installed'), onStartup: on('startup'), onMessage: on('message') },
   };
@@ -87,5 +114,14 @@ export function makeOpera({ tabs: initial = [], groups: initialGroups = [], loca
   };
   // What the panel would send, answered the way chrome.runtime.sendMessage answers.
   const ask = msg => new Promise(r => listeners.message(msg, {}, r));
-  return { chrome, listeners, tabs, groups, local, session, open, close, ask, setGroup };
+  // Access to a site given or taken back in Settings, as Opera reports it.
+  const grant = origin => {
+    granted.add(origin);
+    listeners.permissionsAdded?.({ origins: [origin] });
+  };
+  const revoke = origin => {
+    granted.delete(origin);
+    listeners.permissionsRemoved?.({ origins: [origin] });
+  };
+  return { chrome, listeners, tabs, groups, local, session, alarms, open, close, ask, setGroup, grant, revoke };
 }

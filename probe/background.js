@@ -3,7 +3,7 @@
 import { hostOf, ticketKey, colorFor, islandName } from './titles.js';
 import { buildTree, tabIdsUnder, pickRoot, nodeRef, folderRef } from './tree.js';
 import { snapshotOf, matchTabs, restoredParents, restoredRanks } from './snapshot.js';
-import { probeSite } from './integrations.js';
+import { probeSite, detectSites, pollSites, originPattern, forgetChanges, STATUS_FORMAT } from './integrations.js';
 
 const LIMITS = { log: 200, changes: 100 };
 // Browser pages (settings, extensions, the start page) get the active tab as opener; that link means nothing.
@@ -258,6 +258,19 @@ async function allowAutoFolder({ key }) {
   scheduleMirror();
 }
 
+// A tab the panel opens (a card's "Open pipeline", "Sign in"): the panel says where it belongs, since Opera gives a tab
+// made by an extension the tab in view as its opener, whatever it was asked for. `parent` is a tab id, or -1 for the
+// top level; the URL is remembered until the new tab is reported, whichever comes first.
+const placing = new Map();
+
+async function openTab({ url, parent }) {
+  if (!/^https?:\/\//.test(url)) throw new Error('not a page to open');
+  placing.set(url, parent);
+  setTimeout(() => placing.delete(url), 10_000);
+  const tab = await chrome.tabs.create({ url, active: true, ...(parent > 0 ? { openerTabId: parent } : {}) });
+  setParent(tab.id, parent);
+}
+
 // Settings › Statuses: the probe asks a site's API from here, where statuses would be fetched from, and keeps
 // the answers for the report.
 async function probeApi({ site }) {
@@ -268,10 +281,27 @@ async function probeApi({ site }) {
   return entry;
 }
 
-const commands = { place, newFolder, renameFolder, colorFolder, deleteFolder, closeItems, allowAutoFolder };
+// A site's rest (after it signed out or couldn't be reached) ends: it is asked again at the next round.
+async function unrest(base) {
+  if (watching) await watching;
+  const { watch: memo = {} } = await chrome.storage.session.get('watch');
+  if (!memo.due?.[`site ${base}`]) return false;
+  delete memo.due[`site ${base}`];
+  await chrome.storage.session.set({ watch: memo });
+  return true;
+}
+
+// Retry, from the panel: the site is asked again right now.
+async function retrySite({ base }) {
+  await unrest(base);
+  await watchNow();
+  return {};
+}
+
+const commands = { place, newFolder, renameFolder, colorFolder, deleteFolder, closeItems, allowAutoFolder, openTab };
 // Questions that change no tree run beside the commands' queue, so that a slow site can't hold up a drop. Their
 // answer comes with the reply.
-const queries = { probeApi };
+const queries = { probeApi, retrySite };
 let running = Promise.resolve();
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
@@ -431,15 +461,88 @@ async function mirrorNow(stored, all, trees) {
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && 'settings' in changes) scheduleMirror();
+  if (area === 'local' && 'settings' in changes) {
+    scheduleMirror();
+    watchSoon();
+  }
 });
+
+// ---- statuses: the watch over tickets, merge requests, pipelines, jobs and builds of the open tabs ----
+// Only sites connected in Settings › Statuses are asked, with the browser's session. An alarm wakes the worker
+// every 30 s; pollSites() asks only for what is due (30 s while something runs, longer otherwise). The statuses
+// go under `status` (written only when they change) for the panel; the timings stay in storage.session.
+
+const WATCH = 'statuses';
+let watching = null;
+let soon = 0;
+
+function watchNow() {
+  watching ??= (async () => {
+    try {
+      const { settings = {}, status: kept = {} } = await chrome.storage.local.get(['settings', 'status']);
+      const older = kept.format !== STATUS_FORMAT;
+      const previous = older ? forgetChanges(kept) : kept;
+      const granted = new Set((await chrome.permissions?.getAll?.())?.origins ?? []);
+      const tabs = settings.statuses === false ? [] : await chrome.tabs.query({});
+      const sites = detectSites(tabs, Infinity).filter(site => granted.has(originPattern(site)));
+      const { watch: memo = {} } = await chrome.storage.session.get('watch');
+      const round = await pollSites({ sites, previous, memo });
+      await chrome.storage.session.set({ watch: round.memo });
+      if (round.changed || older) await chrome.storage.local.set({ status: { ...round.status, format: STATUS_FORMAT } });
+    } catch (e) {
+      console.error('probe: the statuses watch failed', e);
+    } finally {
+      watching = null;
+    }
+  })();
+  return watching;
+}
+
+// A page of a site that signed out has loaded: maybe that was the sign-in, so the site is asked again.
+async function afterSignIn(url = '') {
+  const { status = {} } = await chrome.storage.local.get('status');
+  const base = Object.keys(status.sites ?? {}).find(b => status.sites[b].error === 'signed out' && url.startsWith(`${b}/`));
+  if (base && (await unrest(base))) watchSoon();
+}
+
+// A new page, or switching the watch on: asked about in a moment instead of at the next alarm.
+function watchSoon() {
+  clearTimeout(soon);
+  soon = setTimeout(watchNow, 3000);
+}
+
+// The alarm runs only while some site is connected, so that the worker isn't woken for nothing.
+async function keepWatching() {
+  if (!chrome.alarms) return;
+  const connected = ((await chrome.permissions?.getAll?.())?.origins ?? []).length > 0;
+  const alarm = await chrome.alarms.get(WATCH);
+  if (connected && !alarm) chrome.alarms.create(WATCH, { periodInMinutes: 0.5 });
+  if (!connected && alarm) chrome.alarms.clear(WATCH);
+}
+
+chrome.alarms?.onAlarm.addListener(alarm => {
+  if (alarm.name === WATCH) watchNow();
+});
+for (const event of [chrome.permissions?.onAdded, chrome.permissions?.onRemoved]) {
+  event?.addListener(() => {
+    keepWatching();
+    watchSoon();
+  });
+}
+keepWatching();
 
 // ---- tab events ----
 
 chrome.tabs.onCreated.addListener(async tab => {
   const t = Date.now();
   const internal = INTERNAL.test(tab.pendingUrl || tab.url || '');
-  if (tab.openerTabId != null && !internal) setParent(tab.id, tab.openerTabId);
+  const planned = placing.get(tab.pendingUrl || tab.url);
+  if (planned != null) {
+    placing.delete(tab.pendingUrl || tab.url);
+    setParent(tab.id, planned);
+  } else if (tab.openerTabId != null && !internal) {
+    setParent(tab.id, tab.openerTabId);
+  }
   keyOfTab.set(tab.id, ticketKey(tab));
   scheduleSave();
   scheduleMirror();
@@ -471,7 +574,11 @@ chrome.webNavigation.onCreatedNavigationTarget.addListener(async d => {
 });
 
 chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
-  if (change.url !== undefined) scheduleSave();
+  if (change.url !== undefined) {
+    scheduleSave();
+    watchSoon();
+  }
+  if (change.status === 'complete') afterSignIn(tab.url);
   // A tab that became another ticket moves in the tree, and maybe to another island.
   if (change.title !== undefined || change.url !== undefined) {
     const key = ticketKey(tab);

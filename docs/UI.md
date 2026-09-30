@@ -111,6 +111,17 @@ for marks only.
   duplicates), `delete`, `toFolder`, `closeTabs`, `back`, `done`, `warning`, `mr`, `pipeline`, `job`, `build`,
   `sound`, `workspace`, `noDrop`, `dropZone` (also Move to the top level), `emptyTree`, `pin`; and the filled
   `folder` glyph. No text glyphs are left in the UI except `›` between crumbs and key caps (`/`, `↵`, `Esc`).
+- **Status marks** (`.i.st`, 14px in rows, 12px in summaries and the status bar, 10px in lozenges, stroke 1.6): a
+  circle with a glyph, so that they never read as a folder color. `stOk`, `stFail`, `stRun` (its arc spins: `.spin`),
+  `stProgress`, `stPending` (dashed), `stManual`, `stScheduled`, `stWarn`, `stCanceled` (also closed, aborted),
+  `stSkipped`, `stNotBuilt`, `stMerged`, `stApproved`, `stApprovals` (a person), `stRebase`, `stConflict`,
+  `stDiscussions`, `stTodo`, `stProg` (half filled), `stMe`, `stSignedOut` (a key), `stOffline`, `stNotConnected` (a
+  plug), `stRetry`, `stUnknown` (dashed, faint), `stClock`.
+- **Status tokens:** `--st-ok`, `--st-fail`, `--st-warn`, `--st-merged`, `--st-run` (ink, not blue: blue is the
+  accent), `--st-idle`, `--st-track` for both themes and the wallpaper mode; the line's `--ln-aur1` / `--ln-aur2`
+  (running: two hues of the accent's family, lavender to pink on the wallpaper), `--ln-fail` / `--ln-fail2` (coral to
+  red), `--ln-warn`, and `--ln-ga`, the glow's strength (60% dark, 38% light). Fail and warn marks, and in the dark
+  theme run marks, get a soft drop shadow in their color.
 
 ## Parts and their states
 
@@ -193,8 +204,34 @@ workspace` with **New folder**; `No tabs match` with **Clear search** (and an `E
   bottom that runs down over 4 seconds (a CSS animation).
 - At 300px and less, its buttons drop their icons.
 
-**Status bar** (`.status`, 26px, 11px muted): the counts (cut with an ellipsis), then **Islands** with an 8px square
-per island in its color (`#islands`); `Islands off` when the mirror is off; hidden when there are no islands.
+**Statuses in rows** (from `statuses.js`; hidden while **Show statuses** is off):
+- `.stc`, last before the actions and the count: the changed dot (`.chg`, 6px: `.fail` red, `.ok` green, else the
+  accent, with a 3px halo), the person dot (`.me`, 16px accent circle), then a ticket's lozenge (`.js.todo` outlined,
+  `.js.prog` ink on `--chip`, `.js.done` green; 16px high, 9.5px caps, its icon 10px) or a page's marks: words
+  (`.n`, 10.5px, with a 12px icon for approvals; `.n.ready` green; `.opt` ones hide below 340px) and icons. Stale
+  (the site in trouble): `.stale`, opacity .45. The cluster has `title=""`, so the row's tooltip doesn't cover the
+  card.
+- `.pbar`: 2px under the row, from the favicon (`20px + depth × indent`) to 6px from the right edge, on
+  `--st-track`; running: an `<i>` fill in the aurora gradient with an 8px glow and a highlight sweeping along it
+  every 1.8 s (off with reduced motion); `.pbar.fail`: full, coral to red, the same glow.
+- `.row.fin`: the title, key and kind in `--muted`, the favicon at .55.
+- `.sum` on folders and folded rows: `.fail` and `.run` counts with 12px icons, failed first.
+
+**Status bar** (`.status`, 26px, 11px muted): `#stsum` first (buttons 20px high: a site in trouble, `N failed` in
+red, `N running` with the spinning mark, `N finished` with an idle tick; their words (`.w`) hide below 340px), then
+the counts (cut with an ellipsis), then **Islands** with an 8px square per island in its color (`#islands`);
+`Islands off` when the mirror is off; hidden when there are no islands.
+
+**A site in trouble** (`.stbanner`, above the tree): `--warn-bg`, 11px, the key or the offline icon, the words and
+a **Sign in** / **Retry** link (`.link`).
+
+**The details card** (`.pop`, 300px, fixed, radius 8, `--raised` with the shadow, blurred on the wallpaper; a caret
+at the status): a header (`.ph`: the state's mark or the ticket's key, the title, badges), a muted line (`.pm`), for
+a ticket its lozenge with how long (`.lz`), a note when stale (`.banner`), then sections split by rules (`.sep`):
+a caps label (`.lbl`), a 4px bar (`.meter`), lines (`.ln`: a mark, the words, a muted right part `.r`; `.child`
+indented for a stage's jobs; `.strong`, `.ok`, `.fail` for the verdict), and a footer (`.pf`: where from and how
+fresh, and a small button). `.above` when it opens above the status. It opens from the status (`.stc`) or the page
+kind (`.kind`, whose own tooltip is then dropped).
 
 **Messages** (`.toast` in `#toasts`, floating above the status bar, or above the selection bar while it shows):
 a confirmation is inverted (`--fg` ground) with a tick; an error has `--danger-bg`, a danger outline, the warning
@@ -219,16 +256,19 @@ icon and **Copy report**.
   the report in a text area, selected, on `--sel` with an accent outline.
 
 **Settings view** (`.settings`, under the bar):
-- Section labels (`.sub`): **Background**, **Tree**, **Opera**, **Statuses (probe)**, **Diagnostics**, **Setup**.
+- Section labels (`.sub`): **Background**, **Tree**, **Opera**, **Statuses**, **Diagnostics**, **Setup**.
 - Options (`.opt`): a bold name (a label for switches), a muted description, and on the right a switch
   (`input.switch`, 30×18, accent when on) or a small button.
 - **Never for**: chips (`.chip`) with the key and a ✕ button, inside the Auto-folders option.
 - Islands: a bordered list (`.islands`, `.il`): color square, name, `9 tabs · island` (or why not).
-- Statuses (probe): a note (`.wp-note`), then a bordered list of sites (`.sites`, `.site`): a line (`.head`) with the
-  kind (`.kind`: Jira, GitLab, Jenkins), the host, and **Connect**, or **Test** (`Testing…` while it runs) and
-  **Disconnect**; a muted line of what Test asks for (`.m`); then the answers, from the background and from this
-  panel (`.checks`, `.ctx` with the time), one per line (`.check`, `.check.bad`): a tick in `--ok` or a cross in
-  `--danger`, the check's name in bold, the answer muted. Minimal styling: it is a probe.
+- Statuses (second, after Background): **Show statuses** (`#set-statuses`); a bordered list of sites (`.sites`,
+  `.site`, a `.line` 32px high): the favicon of one of its tabs, the host in bold with a small line under it
+  (`small`: `.ok` connected, `.warn` signed out, `.fail` offline, muted when not connected, each with its icon), and
+  **Connect**, **Sign in** (primary), **Retry**, and ⋯ (Test the connection, Disconnect); Test's answers under the
+  site (`.checks`, `.ctx`, `.check`, `.check.bad`); how often it asks and what to open for a missing kind
+  (`.wp-note`); **Dim finished rows** (`#set-dim-finished`) and **Mark what changed while you were away**
+  (`#set-mark-changed`).
+- Row tooltips (the tree's and search results') keep the title and URL only; statuses are in the details card.
 - Background: see below.
 
 ## The wallpaper mode
@@ -324,9 +364,14 @@ selection bar cuts its description first, and at 300px and less its buttons lose
     (a tick icon when done), `.steps li.done`, `.steps li b`;
   - empty states: `#list .empty h4`, `.empty p`, `.empty button` by text;
   - Settings: `.settings .sub`, `.opt b`, `.opt button`, `#set-auto-folders`, `#set-mirror`, `.chip[data-key] button`,
-    `.chips .muted`, `.islands .il .grow`, `.il .m`, `.site[data-site]`, `.site .head button` by text (`Connect`,
-    `Test`, `Testing…`, `Disconnect`), `.site .m`, `.checks .ctx`, `.check`, `.check.bad`, `.check b`,
-    `.check span`;
+    `.chips .muted`, `.islands .il .grow`, `.il .m`, `#set-statuses`, `#set-dim-finished`, `#set-mark-changed`,
+    `.site[data-site]`, `.site small`, `.site .line > button` by text or `aria-label` (`Connect`, `Sign in`,
+    `Retry`, `More for <host>`), `.checks .ctx`, `.check`, `.check.bad`, `.check b`, `.check span`;
+  - statuses: a row's `data-ref` and `.stc > *` (`.chg`, `.me`, `.js.<category>`, `.n`, `.opt`, `.ready`, the marks'
+    `class`), `.pbar`, `.pbar i` (its `width`), `.pbar.fail`, `.stale`, `.row.fin`, `.sum .fail`, `.sum .run`,
+    `#stsum button` by text, `.stbanner`, `.stbanner .link`; the card: `.pop`, `.pop .ph .grow`, `.pop .key`,
+    `.pop .pm`, `.pop .badge`, `.pop .lz`, `.pop .lbl`, `.pop .meter i`, `.pop .ln .grow`, `.pop .ln .r`,
+    `.pop .banner`, `.pop .stale`, `.pop .pf span`, `.pop .pf button`; a row's `title` lines;
   - the Log view: `.logv .kv dt`, `.ev .t` (and its `c-<color>`), `.ev p`, `.seg button`, `.seg button.on`,
     `.banner`, `textarea.report`;
   - search: `.row.hit`, `.hit .key`, `.hit .kind`, `.meta span`, `.crumbs`, `.crumbs .sq`, `mark`, `.badge.ws`,
@@ -341,6 +386,10 @@ selection bar cuts its description first, and at 300px and less its buttons lose
 
 ## Where the build differs from the canvas
 
+- **Statuses:** the narrow rule (words hide below 340px) is a media query on the panel's width, not a container
+  query. Settings keeps **Test the connection** and **Disconnect** in a ⋯ menu, and Test's answers under the site.
+  The details card's times are relative ("24 h ago"), not "yesterday". A running Jenkins build uses the spinning
+  mark, as in the rows board; the progress ring is kept for later.
 - **Tooltips** are the browser's own `title` tooltips; the canvas's custom title-and-URL card is not built.
 - **Density** is 24px rows only; the canvas's compact (22) and roomy (26) variants are not offered.
 - **Swatches** in the folder menu are 4px apart instead of 5, so that nine fit in the 228px menu.

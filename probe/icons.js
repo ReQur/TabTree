@@ -52,6 +52,42 @@ export const ICONS = {
   pin: [path('M6 2.5h4l-.5 4 2 2v1h-7v-1l2-2z'), path('M8 9.5v4')],
 };
 
+// Status marks (`.i.st` in panel.css): a circle with a glyph, 14px in rows, colored by their state's class. The
+// running one's arc spins; a progress ring gets its arc's length from icon() callers.
+const RING = circle(8, 8, 6.25);
+const arc = dash => ['circle', { class: 'arc', cx: 8, cy: 8, r: 6.25, 'stroke-dasharray': dash }];
+const PERSON = [circle(8, 5, 2.5), path('M3.5 13.5c0-2.5 2-4.25 4.5-4.25s4.5 1.75 4.5 4.25')];
+const DASHED = [['circle', { cx: 8, cy: 8, r: 6.25, 'stroke-dasharray': '2.4 2.5' }]];
+
+Object.assign(ICONS, {
+  stOk: [RING, path('M5.3 8.2l1.9 1.9 3.6-3.8')],
+  stFail: [RING, path('M6 6l4 4M10 6l-4 4')],
+  stRun: [['circle', { class: 'trk', cx: 8, cy: 8, r: 6.25 }], arc('10 40')],
+  stProgress: [['circle', { class: 'trk', cx: 8, cy: 8, r: 6.25 }], arc('0 40')],
+  stPending: DASHED,
+  stManual: [RING, path('M6.75 5.4v5.2L10.9 8z')],
+  stScheduled: [RING, path('M8 4.8V8l2.2 1.4')],
+  stWarn: [RING, path('M8 4.9v3.6M8 11h.01')],
+  stCanceled: [RING, path('M3.6 12.4l8.8-8.8')],
+  stSkipped: [RING, path('M5.5 5.5L8 8l-2.5 2.5M8.5 5.5L11 8l-2.5 2.5')],
+  stNotBuilt: [RING, path('M5.5 8h5')],
+  stMerged: [circle(4.5, 3.5, 1.5), circle(4.5, 12.5, 1.5), circle(11.5, 8, 1.5), path('M4.5 5v6M4.5 5.5c0 2 2.2 2.5 5.5 2.5')],
+  stApproved: [circle(6, 5, 2.25), path('M2.25 13c0-2.1 1.7-3.75 3.75-3.75 1 0 1.9.4 2.6 1M9.5 11.5l1.6 1.6 3-3.2')],
+  stApprovals: PERSON,
+  stRebase: [circle(4.5, 12.5, 1.5), path('M4.5 11V3.5h5a2.5 2.5 0 0 1 2.5 2.5v2.5'), path('M10 7l2 2 2-2')],
+  stConflict: [path('M8 2.5l6 11H2z'), path('M8 6.5v3M8 11.5h.01')],
+  stDiscussions: [path('M2.75 4.25c0-.8.7-1.5 1.5-1.5h7.5c.8 0 1.5.7 1.5 1.5v5c0 .8-.7 1.5-1.5 1.5H7.5l-3 2.5V10.75h-.25c-.8 0-1.5-.7-1.5-1.5z')],
+  stTodo: [RING],
+  stProg: [RING, ['path', { d: 'M8 1.75a6.25 6.25 0 0 1 0 12.5z', fill: 'currentColor' }]],
+  stMe: [circle(8, 5.5, 2.5), path('M3.5 14c0-2.5 2-4.5 4.5-4.5s4.5 2 4.5 4.5')],
+  stSignedOut: [circle(5.25, 10.75, 2.75), path('M7.25 8.75l6-6M11.5 4.5l1.75 1.75M9.75 6.25l1.5 1.5')],
+  stOffline: [path('M2 6.5a9 9 0 0 1 12 0M4.3 9a5.5 5.5 0 0 1 7.4 0M6.6 11.4a2 2 0 0 1 2.8 0M2.5 2.5l11 11')],
+  stNotConnected: [path('M6 2.5v3M10 2.5v3M4.5 5.5h7v2a3.5 3.5 0 0 1-7 0zM8 11v2.5')],
+  stRetry: [path('M13 8a5 5 0 1 1-1.5-3.55M13 3v3h-3')],
+  stUnknown: DASHED,
+  stClock: [RING, path('M8 4.8V8l2.2 1.4')],
+});
+
 // The folder glyph in a folder row's favicon column: filled with the folder's color (`.dot` in panel.css).
 const GLYPHS = {
   folder: [path('M1.5 4.5c0-.83.67-1.5 1.5-1.5h3.1l1.5 1.5H13c.83 0 1.5.67 1.5 1.5v5.5c0 .83-.67 1.5-1.5 1.5H3c-.83 0-1.5-.67-1.5-1.5z')],

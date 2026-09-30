@@ -42,7 +42,8 @@ probe/                 the extension, loaded unpacked as it is
   panel.html/.css/.js  the sidebar UI: draws the tree, sends commands, never writes the tree itself
   icons.js             the panel's SVG icons and icon(name)
   wallpaper.js         the wallpaper's scrim and accent colors from a sample of its pixels (pure)
-  integrations.js      the statuses probe: Jira/GitLab/Jenkins sites in tabs, read-only API checks with the session
+  integrations.js      statuses: Jira/GitLab/Jenkins sites in tabs, the probe, the watch's rounds (reads, session)
+  statuses.js          what the panel shows for a status: marks, lines, summaries, the status bar, the card (pure)
   icons/               PNG icons of the extension
 tests/                 scenario tests on fakes (jsdom, a fake Opera); helpers in tests/helpers/
 docs/                  see above
@@ -59,10 +60,12 @@ docs/                  see above
     folder counts, the snapshot state and the recent events.
 - Invariants (the reasons are in ARCHITECTURE.md):
   - Every change to the tree is a background command: `place`, `newFolder`, `renameFolder`, `colorFolder`,
-    `deleteFolder`, `closeItems`, `allowAutoFolder`. The panel redraws from storage. It writes only `settings`
+    `deleteFolder`, `closeItems`, `allowAutoFolder`, `openTab`. The panel redraws from storage. It writes only `settings`
     and `wallpaper` itself; the wallpaper has a key of its own, so that its sliders reload no tree.
   - Work sites (Jira, GitLab, Jenkins hosts) never go into the repo: the manifest has only
     `optional_host_permissions`, and a site is granted at runtime from Settings.
+  - Statuses are read-only and use the browser's session: no tokens are stored. Only the background's watch writes
+    `status`.
   - Tab ids change with every browser session. Anything keyed by a tab id must go through the snapshot to survive a
     restart.
   - Islands are output only. Each top-level folder with 2+ tabs is an island; every other tab is kept out of

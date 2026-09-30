@@ -49,7 +49,7 @@ search('fix spike');
 check(`several words are all marked: ${marks('spike')}`, marks('spike') === 'Fix,spike');
 search('zzz');
 check(`no matches: «${$('#list .empty h4')?.textContent}»`, $('#list .empty h4')?.textContent === 'No tabs match'
-  && $('#list .empty p').textContent.startsWith('Every word has to match a title, URL, ticket key or page kind') && !$('.meta'));
+  && $('#list .empty p').textContent.startsWith('Every word has to match a title, URL, ticket key, page kind (mr, pipeline, jira) or status') && !$('.meta'));
 [...p.w.document.querySelectorAll('#list .empty button')].find(b => b.textContent.startsWith('Clear search')).click();
 check('with a button that clears the search', $('#q').value === '' && !!p.row('Release 2.4'));
 

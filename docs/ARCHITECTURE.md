@@ -15,7 +15,8 @@ Opera: tabs, islands (tab groups), workspaces
 ```
 
 - `manifest.json`: MV3. Declares `sidebar_action` (Opera's own sidebar API; Opera has no `chrome.sidePanel`), a
-  module service worker, and the permissions `tabs`, `webNavigation`, `storage`, `tabGroups`, `clipboardWrite`.
+  module service worker, and the permissions `tabs`, `webNavigation`, `storage`, `tabGroups`, `clipboardWrite`,
+  `alarms`.
   `optional_host_permissions` (`https://*/*`, `http://*/*`) grants nothing by itself: Settings › Statuses asks
   Opera for one site's origin at a time, so no work host is ever written into the repo.
 - `background.js`: the only writer of the tree.
@@ -35,9 +36,12 @@ Opera: tabs, islands (tab groups), workspaces
   - Also draws Settings, the Log view and the setup guide, builds the diagnostics report, and draws the wallpaper.
 - `icons.js`: the panel's 27 icons as SVG shapes, and `icon(name)`, which clones a cached `<svg>`.
 - `wallpaper.js`: pure. The wallpaper's colors from a small sample of its pixels: `tonesOf()` and `wallTokens()`.
-- `integrations.js`: the statuses probe. `detectSites(tabs)` finds the Jira, GitLab and Jenkins sites behind the
-  tabs, with a few pages of each to try; `probeSite(site)` asks their APIs with the session (fetch is passed in by
-  the tests).
+- `statuses.js`: pure. What the panel shows for a status: `rowStatus()` (a row's marks, lozenge, line, finished,
+  stale, changed), `summaryOf()` (a branch's failed and running), `barOf()` (the status bar), `statusWords()` (search),
+  `cardOf()` (the details card's content), and `MARKS` (a state's icon and color class).
+- `integrations.js`: statuses from Jira, GitLab and Jenkins. `detectSites(tabs, limit)` finds the sites behind the
+  tabs with their pages; `probeSite(site)` is the Test; `pollSites()` is one round of the watch; `watchedOf(tab)` and
+  `statusLines()` read what the watch keeps about a tab. Pure apart from `fetch`, which the tests pass in.
 - `icons/`: generated PNGs (16, 32, 48, 128), the extension's own icon.
 
 No build step and no runtime dependencies. `package.json` exists only for the tests (jsdom).
@@ -55,6 +59,7 @@ No build step and no runtime dependencies. `package.json` exists only for the te
 | `wallpaper` | `{ source: "file" \| "none", name, dataUrl, width, height, w, h, bytes, tones: { vivid, dark, mean }, x, dim, blur, accent: "blue" \| "wallpaper" }` | the picture behind the panel with its settings (Settings › Background), written by the panel. `width`/`height` are the file's size, `w`/`h` and `bytes` the stored JPEG's; `tones` are `[r, g, b]` colors from `tonesOf()`; `x` (0–100), `dim` (0–100), `blur` (px). `source: "none"` keeps the picture but doesn't draw it. A key of its own, so that a slider's change reloads no tree (see The wallpaper). |
 | `declined` | `{ [ticketKey]: true }` | tickets never to get an automatic folder again. Shown in Settings › Never for; `allowAutoFolder` removes one. |
 | `apiProbe` | `{ [site base]: { kind, origin, t, results: [{ name, ok, text }] } }` | the background's last answers of the statuses probe, for Settings and the report. Written by the background. |
+| `status` | `{ sites: { [base]: { kind, ok, error? } }, tickets, mrs, pipelines, jobs, builds, projects }` | what the watch keeps (see The statuses watch). Written by the background, only when something changed. |
 | `snapshot` | `{ savedAt, tabs: [{ url, title, parent, rank? }] }` | the tree for the next session; see Restarts. |
 | `log`, `changes` | arrays of events (last 200 / 100) | for the report. |
 
@@ -64,6 +69,7 @@ No build step and no runtime dependencies. `package.json` exists only for the te
 |---|---|
 | `sid` | set by the first worker of a session. When it is missing, the worker restores the tree. |
 | `mirror` | `{ "<folderId>\|<windowId>\|<workspaceId>": groupId }`: which island mirrors which folder. |
+| `watch` | the statuses watch's memo: `due` (`"<map> <id>"` or `"site <base>"` → when it is asked again), `me` (Jira site → the session's accountId), `checked` (site → when it was last asked). |
 
 The panel's `localStorage` holds per-viewer conveniences only: `view` (`tree` / `log`; Settings isn't remembered)
 and `collapsed` (keys `<view>:t:<tabId>`, `<view>:f:<folderId>`, `<view>:ws:<workspaceId>`). "Later" on the setup
@@ -85,6 +91,7 @@ at a time and wait until the start-up restore is done.
 | `deleteFolder` | `id` | contents move to the nearest surviving ancestor (or the top level); the folder's `key` goes to `declined`. |
 | `closeItems` | `tabIds`, `folderIds` | closes the tabs and deletes the folders, without declining. |
 | `allowAutoFolder` | `key` | removes the key from `declined` and schedules a tidy pass, so a family that qualifies gets its folder right away. |
+| `openTab` | `url` (http or https), `parent`: a tab id, or -1 for the top level | opens the page in a new tab and puts it under `parent`: the URL is kept in `placing` until `tabs.onCreated` reports the tab, which then takes that parent instead of its opener, and the parent is set again once `tabs.create` returns. The details card's **Open pipeline** and **Sign in** use it. |
 
 A ref is `"t:<tabId>"` or `"f:<folderId>"` (`nodeRef()` in tree.js).
 
@@ -94,6 +101,7 @@ slow site can't hold up a drop. Their reply carries the answer.
 | type | payload | answers |
 |---|---|---|
 | `probeApi` | `site` (from `detectSites()`) | `{ ok: true, kind, origin, t, results }`, and keeps it under `apiProbe`. Only `jira`, `gitlab` and `jenkins` sites with an http(s) base. |
+| `retrySite` | `base` | ends the site's rest and runs a round now; `{ ok: true }`. |
 
 ## The statuses probe
 
@@ -113,6 +121,51 @@ slow site can't hold up a drop. Their reply carries the answer.
   report shows whether the background and the panel differ. Access comes from `chrome.permissions.request`, which
   has to be called right in the click; `load()` reads what is granted with `permissions.getAll()`, and
   `permissions.onAdded` / `onRemoved` refresh the panel.
+
+## The statuses watch
+
+- **When:** an alarm (`statuses`, every 30 s) runs while at least one site is connected (`keepWatching()`, again on
+  `permissions.onAdded` / `onRemoved`). A tab's new URL, a new connection and a change of `settings` run a round 3 s
+  later (`watchSoon()`). Rounds don't overlap.
+- **A round** (`watchNow()` → `pollSites()`): the connected sites from `detectSites(all tabs, Infinity)`; for each,
+  only what is due is asked, 4 requests at a time per site. What isn't due, or can't be asked, is carried over from
+  the last `status`. Pages no longer in any tab drop out.
+- **Keys:** tickets by key; merge requests, pipelines and jobs by their page's URL without the tail
+  (`https://gitlab.example.com/group/app/-/merge_requests/42`), the same as `watchedOf(tab)` gives; Jenkins builds and
+  jobs (`projects`) by their URL. Every value has `t0`, when it was first known, and `t`, when it last changed: the
+  same answer keeps the old value, so that `status` is written only on a change. `t > t0` and `t` after the tab's
+  `lastAccessed` is what the panel calls changed while you were away. Values are compared with `canon()` (JSON with
+  sorted keys), because stored objects come back with their keys sorted. `status.format` (`STATUS_FORMAT`, 2) marks
+  statuses kept since that comparison; older ones go through `forgetChanges()` once (`t0 = t`), since a plain JSON
+  comparison had seen a change at every round.
+- **Shapes:**
+  - ticket `{ name, category: new | indeterminate | done, since, assignee: { name, me } | null }`;
+  - merge request `{ state, draft, merge, conflicts, threadsResolved, approved, approvalsLeft, approvedBy, pipeline }`;
+  - pipeline `{ id, status, warnings, startedAt, finishedAt, duration, stages: [{ name, status, done, total, failed:
+    [names], running: [{ name, startedAt }] }], jobs: { total, success, failed, running, pending, skipped, manual,
+    canceled, warnings }, failed, running }`;
+  - job `{ status, name, stage, allowFailure, pipelineId, startedAt, finishedAt, duration }`;
+  - build (and a Jenkins job's last build) `{ number, building, result, startedAt, estimate, duration, job, recent:
+    [{ number, result, startedAt, duration }] }`.
+- **Requests:**
+  - Jira: `myself` once per session and site (`memo.me`), then `POST issue/bulkfetch` for up to 100 due keys at once
+    (`status`, `assignee`, `statuscategorychangedate`); keys Jira doesn't know are dropped;
+  - GitLab: a merge request (`head_pipeline` included), its `approvals` while it is open, and its pipeline's
+    `jobs?per_page=100`, asked again only for another pipeline, a changed status, or one still running; a pipeline
+    tab: the pipeline and its jobs; a job tab: the job;
+  - Jenkins: one request per Jenkins job, `<job>/api/json?tree=name,builds[number,result,building,timestamp,
+    estimatedDuration,duration]{0,6}`: a build tab's build is found in it (else asked by itself), a job tab takes the
+    newest; the builds before it go into `recent`.
+- **Stages** come from the jobs in id order; a stage is running if a job runs, failed if a job failed that may not,
+  pending, canceled, skipped, manual, else success.
+- **Cadence** (`CADENCE`): 30 s while running or pending (GitLab's `created`, `waiting_for_resource`, `preparing`,
+  `pending`, `running`; Jenkins `building`), 2 min while open (open merge requests, tickets not done, Jenkins jobs),
+  15 min once over. A 403/404/410 drops the page for 15 min; another error keeps the old value and asks again in 2 min.
+- **A site in trouble:** 401, a redirect, or a web page instead of JSON → `signed out`; a network error or timeout →
+  `offline`. The rest of that site's round is carried over, `status.sites[base]` says so, and the site rests 5 or 2
+  min (`memo.due["site <base>"]`). `memo.checked[base]` is when it last answered, so its statuses are as of then.
+  A page of a signed-out site that finishes loading (`afterSignIn()`) ends its rest, and so does `retrySite`.
+- **The switch** `settings.statuses === false` makes the rounds see no site, which empties `status`.
 
 ## The background
 
@@ -246,6 +299,18 @@ The panel builds the tree for the current workspace. The background builds one p
     `copyText()` (`navigator.clipboard`), `markdownOf()` (a nested list of branches).
 - **Search results:** `hitRow()` draws a result with `marked()` (the words found, in `<mark>`) and `crumbs()` (the
   path from `treeNodes`, or where else the tab is). `emptyState()` draws "No tabs match" and the empty workspace.
+- **Statuses** (drawn from `statuses.js`):
+  - `renderNode()` asks `rowStatus()` for each tab row and `statusParts()` draws it before the row's actions: `.stc`
+    with the changed dot, the person dot, the lozenge or the marks (`statusIcon()`), and the `.pbar` line; finished
+    rows get `.fin`. `summaryPart()` draws `.sum` on folders and folded rows;
+  - `renderStatusSum()` fills `#stsum` in the status bar; `troubleBanners()` goes above the tree; search adds
+    `statusWords()` to what it matches;
+  - the details card: `hoverCard()` / `leaveCard()` (400 ms in, 200 ms out, on the status or the page kind; the
+    wait is kept by row, so that a redraw under a still mouse doesn't restart it), `showCard()` builds it from
+    `cardModel()` → `cardOf()` and `cardView()`, `placeCard()` puts it under the status, `updateCard()` redraws it
+    with the tree (it finds its row again by ref), `closeCard()` on Esc, a click elsewhere, a scroll that moves the
+    list (a redraw's own scroll event doesn't count), a view switch;
+  - a drawing with a running line redraws itself 30 s later (`tick`), for the fills that follow the clock.
 - **Settings and the guide:** `renderSettings()` builds the Settings view (with `backgroundSettings()` first);
   `guideCard()` draws the setup guide. Both write `settings` through `setSetting()`, a read-modify-write of the whole
   object.
@@ -323,6 +388,12 @@ A picture behind the panel (Settings › Background), stored under `wallpaper`.
     seconds;
   - Ctrl+T tabs and browser pages get the active tab as opener, which is meaningless.
 - **Other tab fields**: there is also `splitViewId` (Opera's split screen), unused so far.
+- **A tab made by an extension** (`tabs.create`, even with `openerTabId`) gets the tab in view as its opener, as
+  a Ctrl+T tab does (seen 2026-09-30: a pipeline opened from a merge request's card landed under the active tab).
+  The panel therefore opens tabs through the background's `openTab`, which says where they belong.
+- **Stored objects come back with their keys sorted** (Chromium keeps them as sorted dictionaries). Comparing a
+  stored value with a fresh one as plain JSON sees a change that isn't there; the statuses watch did, at every
+  round, until 2026-09-30. The test fakes return sorted copies too (`tests/helpers/stored.js`).
 - **Site access with the browser's session** (the statuses probe, 2026-09-30):
   - `chrome.permissions.request({ origins })` from the sidebar panel's click shows Opera's prompt and grants the
     origin, and `permissions.remove` takes it back;
@@ -347,9 +418,12 @@ A picture behind the panel (Settings › Background), stored under `wallpaper`.
 
 `npm install` once, then `npm test` (`node --test tests/*.test.js`; each file runs in its own process).
 
+- `tests/helpers/stored.js`: `asStored()`, what Opera's storage gives back (a JSON copy with sorted keys); both fakes
+  return stored values through it.
 - `tests/helpers/opera-fake.js` is a fake of the Opera APIs the background uses: tabs, islands that vanish when
   empty, storage, events. `open()` opens a tab, `close()` closes one, `setGroup()` imitates a change made in Opera,
-  and `ask()` sends a panel command or query.
+  and `ask()` sends a panel command or query. It fakes Opera's optional permissions (`granted`, `grant()`,
+  `revoke()`) and alarms; the network is `globalThis.fetch`, set by the test.
 - `tests/helpers/panel-env.js` loads `panel.html` + `panel.js` into jsdom with a fake API. It records the messages
   the panel sends, the tabs it opens, closes, reloads and unloads, the text it copies and the settings it writes
   (`storage.local.set` updates the store and notifies the panel, as Opera does). It fakes Opera's optional
@@ -377,8 +451,12 @@ A picture behind the panel (Settings › Background), stored under `wallpaper`.
 | `panel-wallpaper.test.js` | Settings › Background: a stored picture drawn, Dim, Blur, the frame, the accent, None, Remove, another panel's change, the report line |
 | `wallpaper.test.js` | the tones of made-up pixels and the tokens made from them: hue, contrast, a grey picture |
 | `integrations.test.js` | the statuses probe: sites and pages found in tabs, the requests made, how each kind of answer reads |
+| `watch.test.js` | the statuses watch's rounds: what is asked and kept, stages and jobs, when each page is due, finished pipelines not asked again, a site signed out or offline, a gone page, closed tabs |
+| `watch-background.test.js` | the watch in the background: the alarm, a round on it and right after a connection, only connected sites, the switch, no alarm without sites |
+| `open-tab.test.js` | a tab the panel opens hangs where it says, not under the tab in view that Opera gives it as opener |
 | `probe-api.test.js` | the `probeApi` query in the background: the answer, what is kept, what is refused |
-| `panel-statuses.test.js` | Settings › Statuses: sites, Connect (refused, given), Test from both places, the report, Disconnect |
+| `statuses.test.js` | the marks of a merge request by precedence, pipelines, jobs, builds, tickets; unknown, stale, changed; summaries, the status bar, search words, times |
+| `panel-statuses.test.js` | statuses in the panel: marks, lozenges and lines in rows, folder and folded summaries, the status bar (search, Close finished), the details card (hover, pin, Open pipeline, a redraw meanwhile), the switches, a signed-out site (banner, stale, Sign in), Settings › Statuses (states, Connect, Retry, Test, Disconnect), the report |
 
 Everything is tested against fakes, never against real Opera. After a change, ask the repo owner to reload the
 extension and look, or to paste **Copy report**. The panel tests find elements by id and class (`#list .row`,

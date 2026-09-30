@@ -25,7 +25,7 @@ Top to bottom:
 - **The list**: the tree of folders and tabs, with the setup guide above it until it is dismissed.
 - **Selection bar**, floating above the status bar while rows are selected: `3 selected`, what that is
   (`4 tabs, 1 folder`), **Folder**, **Close** and **✕**.
-- **Status bar**: counters (`22 tabs · 4 folders · 4 tickets · +2 in Personal`), then **Islands** with a square in
+- **Status bar**: what failed, what runs, what is finished and a site in trouble (see Statuses), then counters (`22 tabs · 4 folders · 4 tickets · +2 in Personal`), then **Islands** with a square in
   the color of each island. A click on Islands opens Settings.
 
 **Log** and **Settings** take the place of the header and the list, under a bar of their own: **←** or Esc goes
@@ -323,32 +323,105 @@ switches are on by default.
   - **Islands**: the island mirror.
   - Every top-level folder with its state: `9 tabs · island`, `1 tab · no island, Opera needs 2`,
     `0 tabs · no island`, or `islands are off`.
-- **Statuses (probe)**: see below.
+- **Statuses**: showing them, the connected sites, dimming finished rows, marking changes; see below.
 - **Diagnostics**: **Report › Copy** copies the report; **Log › Open** opens the Log view.
 - **Setup**: **Setup guide › Show** brings the setup guide back above the tree.
 
-## Statuses of tickets and merge requests: the probe
+## Statuses of tickets, merge requests, pipelines and builds
 
-Showing the status of a ticket, a merge request, a pipeline or a build on its row is planned. First, the probe finds
-out whether the extension can read them with the browser's own session, without tokens: **Settings › Statuses
-(probe)**.
+The rows show where the work of their tabs stands: a ticket's status, a merge request's pipeline and what keeps it
+from merging, a job's or a build's result. The extension reads Jira, GitLab and Jenkins with the browser's own
+sign-in: no tokens, it only reads, and nothing leaves the browser. Everything is in **Settings › Statuses**.
 
+### What the rows show
+
+The status sits last in the row, before the count, so statuses line up in one column. Color means finished or needs
+you; ink and motion mean still going.
+
+- **A ticket's root row:** a lozenge with the ticket's status in capitals (`IN REVIEW`), outlined for To Do, ink for
+  In Progress, green for Done; a person dot in the accent color when the ticket is on you.
+- **A merge request** (any of its pages): one mark, whichever comes first of: merged, closed, pipeline failed,
+  conflict, pipeline running or waiting, needs a rebase, unresolved threads, approvals missing (`1/2`), ready to merge
+  (`ready`, green). A second, smaller mark may come before it for what else blocks it (a rebase beside a failed
+  pipeline), and the approvals beside a running pipeline. A draft shows its pipeline's mark.
+- **The line under the row** (from the favicon to the right edge): while a pipeline runs, it fills as its jobs finish,
+  in two hues of the accent with a soft glow and a highlight sweeping along it; when the pipeline failed, it is full,
+  coral to red; a passed one has none. A Jenkins build's line fills by Jenkins' own estimate, with the time left
+  (`~6 min`) before its mark.
+- **A pipeline tab, a GitLab job tab, a Jenkins build tab:** their mark (passed, failed, running, waiting, manual,
+  scheduled, canceled, skipped, passed with warnings, unstable, aborted, not built); a failed job has the red line. A
+  Jenkins job's tab shows its last build.
+- **Finished rows are dimmed:** merged and closed merge requests, Done tickets (**Dim finished rows** in Settings).
+- **Changed while you were away:** a dot before the status (red for a failure, green for a success) when it changed
+  after you last looked at the tab; it goes when you open the tab (**Mark what changed while you were away**).
+- **Not known yet:** a dashed circle while a connected site is first asked. A page of a site that isn't connected has
+  no mark at all.
+- **Folders and folded rows** sum up what failed and what runs under them (`✕ 2 ◌ 1`), failed first.
+- Below 340px of panel width, the words (`ready`, `~6 min`, the lozenge's name, the status bar's words) give way to
+  their icons.
+
+### The details card
+
+Hovering a status, or the page kind beside it (`MR !42`), for 400 ms opens a card; a click on the status pins the card. It closes when the mouse leaves it (unless
+pinned), on Esc, a click elsewhere, or scrolling. It answers "what am I waiting for":
+
+- a merge request: its pipeline (running for how long, or failed after how long) with a bar of its jobs, each stage
+  with its jobs done of all (`test 4/7 · 1 running`), the failed jobs and the running ones (for how long) under their
+  stage; then what the merge waits for (conflicts, a rebase, threads, the pipeline, approvals `1 of 2`) or **Ready to
+  merge**; **Open pipeline** opens it in a tab under the merge request;
+- a ticket: its lozenge and for how long it has been in that status, who it is on, when the status changed, and how
+  many open merge requests hang under it;
+- a job: its stage and pipeline, and how it ended (`Failed after 3 min`, how long ago);
+- a Jenkins build: when it started, a bar and the time left by the estimate, and the job's last builds with their
+  results;
+- how fresh it is (`gitlab.example.com · checked 20 s ago`). A site in trouble adds a note that this is the last known
+  status, with **Sign in** or **Retry**.
+
+### Around the tree
+
+- **The status bar** starts with what needs you: `2 failed` and `3 running` put `failed` or `running` into the
+  search; `2 finished` offers **Close 2 finished tabs** (merged and closed merge requests, Jira pages of Done tickets).
+  A site in trouble comes first: `GitLab: sign in` opens the site, `Jenkins: offline` asks it again.
+- **A banner above the tree** when a connected site signed out or can't be reached: `Signed out of
+  gitlab.example.com. Its statuses are from 14:02. Sign in`. Its statuses stay, dimmed, until it answers again.
+- **Search** matches statuses too: `failed`, `running`, `passed`, `merged`, `ready`, `rebase`, `conflict`, `draft`,
+  `done`, a Jira status's own name.
+
+### Settings › Statuses
+
+- **Show statuses** (on by default): off stops asking and forgets the statuses.
 - **The sites** are the Jira, GitLab and Jenkins sites behind the open tabs:
   - Jira: an issue page (`/browse/PROJ-1`), a site on `atlassian.net`, or a title ending in `- Jira`;
   - GitLab: a merge request, pipeline or job page (`/-/merge_requests/42`), or a title ending in `· GitLab`;
   - Jenkins: a title ending in `[Jenkins]` or `- Jenkins`;
   - any page of a host named after its tool (`gitlab.example.com`, `jira.example.com`, `jenkins.example.com`).
-  Nothing about them is kept in the extension's code. A kind with no open page gets a line saying what to open (a
-  ticket, a merge request, a build); so does a site whose open pages give nothing to try beyond who you are.
-- **Connect** asks Opera to let the extension request that site; Opera asks you. **Disconnect** takes it back.
-- **Test** only reads. It asks the site who you are, then about pages of the open tabs:
-  - Jira: a ticket's status, the same tickets by a JQL search, and by a bulk fetch (a POST);
-  - GitLab: a merge request (state, draft, merge status, pipeline), its approvals, a pipeline, a job;
-  - Jenkins: a build's result.
-- It asks twice, from the background (where statuses would be fetched from) and from the panel, and shows every
-  answer: `✓ Signed in: yes`, `✓ A ticket: In Progress · indeterminate`, or why not: `HTTP 401 · not signed in`,
-  `redirected, likely to a login page`, `a web page instead of JSON`, `network error`, `no answer in 8 s`.
-- The report has the answers too, with the connected sites.
+  Nothing about them is kept in the extension's code. A kind with no open page gets a line saying what to open.
+- Each site shows how it stands: `Connected · checked 12 s ago · 5 tickets`; `Signed out · last known 14:02` with
+  **Sign in**; `Offline · VPN? last OK 13:40` with **Retry**; `Not connected: TabTree may not read this site` with
+  **Connect**, which asks Opera to let the extension read that site (Opera asks you).
+- **⋯** on a connected site: **Test the connection** and **Disconnect**.
+- **Dim finished rows** and **Mark what changed while you were away**, both on by default.
+
+### How it is asked
+
+- **What is kept**, for the pages of the open tabs only:
+  - a ticket (any tab whose title or path carries its key, so a ticket shows even when only its merge request is
+    open): its status, its category, since when, and who it is on;
+  - a merge request: open, draft, merged or closed; why it can't be merged yet; its approvals; its latest pipeline
+    with its stages and jobs;
+  - a pipeline tab, a GitLab job tab: the same for them;
+  - a Jenkins build or job tab: the build's result or progress, and the job's last builds.
+- **How often:** every 30 seconds while something runs, every 2 minutes while it is open, every 15 minutes once it is
+  over. A page that opens in a tab is asked about within seconds. Pages of closed tabs are forgotten.
+- **When a site fails:** signed out (the session expired) or unreachable (no network, VPN off), it is asked again
+  after 5 or 2 minutes, and its last statuses stay meanwhile. A signed-out site is asked again as soon as one of its
+  pages loads, which is how signing in on the site brings it back; **Retry** asks at once.
+- **Test** only reads. It asks the site who you are, then about pages of the open tabs (Jira: a ticket's status, a
+  JQL search and a bulk fetch; GitLab: a merge request, its approvals, a pipeline, a job; Jenkins: a build), from the
+  background and from the panel, and shows every answer under the site: `✓ Signed in: yes`, or why not
+  (`HTTP 401 · not signed in`, `redirected, likely to a login page`, `a web page instead of JSON`, `network error`,
+  `no answer in 8 s`).
+- **The report** has Test's answers, the connected sites, a summary of the watch, and a line per status.
 
 ## Setup guide
 
@@ -381,6 +454,10 @@ Until it is dismissed, a card above the tree lists what to set up in Opera, once
 | hover | folder row | **+** folder inside, **⋯** menu, drag handle |
 | hover | top-level ticket | **→ folder**, **✕**, **⋯** |
 | click | step of the setup guide | tick / untick it |
+| hover 400 ms | a row's status or page kind | its details card |
+| click | a row's status | pin the details card |
+| click | `2 failed`, `3 running` in the status bar | search for them |
+| click | `2 finished` in the status bar | offer to close them |
 | click | **Islands** in the status bar | open Settings |
 | click | a message | dismiss it |
 | `/` | anywhere | focus search (from Log or Settings too) |
@@ -388,7 +465,7 @@ Until it is dismissed, a card above the tree lists what to set up in Opera, once
 | ↑ ↓ Enter | menu | move between the items, use one |
 | ← | Log, Settings | back to the tree |
 | drag, or ← → | the frame in Settings › Background | move the picture |
-| Esc | anywhere | close the menu, if one is open; else cancel an armed Close; otherwise clear the search and the selection, and go back to the tree from Log or Settings; also closes the report's copy-by-hand box |
+| Esc | anywhere | close the menu, if one is open; else close the details card; else cancel an armed Close; otherwise clear the search and the selection, and go back to the tree from Log or Settings; also closes the report's copy-by-hand box |
 | Delete | with a selection | Close the selection (asks first when it is big) |
 
 ## Limitations and known gaps
@@ -405,6 +482,6 @@ Until it is dismissed, a card above the tree lists what to set up in Opera, once
 - **Title and favicon changes of background tabs** are only logged. The planned "changed while you weren't looking"
   marker is not built.
 - **Hover-only buttons** are easy to miss; a right click gives the same menu as **⋯**.
-- **Statuses of tickets and merge requests** aren't shown yet; Settings has only the probe for them.
+- **Statuses** come only from Jira, GitLab and Jenkins, and only for the pages of open tabs.
 - **The background picture comes from a file.** Following Opera's own start-page wallpaper needs a helper outside
   the browser (see ARCHITECTURE.md), so it is not offered yet.

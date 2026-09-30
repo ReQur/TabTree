@@ -7,8 +7,9 @@
 import { JSDOM } from 'jsdom';
 import fs from 'node:fs';
 import { wait } from './check.js';
+import { asStored } from './stored.js';
 
-export async function loadPanel({ tabs, store, onMessage = () => {}, granted = [], fetch }) {
+export async function loadPanel({ tabs, store, session = {}, onMessage = () => {}, granted = [], fetch }) {
   const html = fs
     .readFileSync(new URL('../../probe/panel.html', import.meta.url), 'utf8')
     .replace(/<script[^>]*><\/script>/, '');
@@ -19,6 +20,7 @@ export async function loadPanel({ tabs, store, onMessage = () => {}, granted = [
   const removed = [];
   const reloaded = [];
   const discarded = [];
+  const created = [];
   const copied = [];
   const sets = [];
   const dragImages = [];
@@ -39,6 +41,7 @@ export async function loadPanel({ tabs, store, onMessage = () => {}, granted = [
       remove: async ids => removed.push(...[].concat(ids)),
       reload: async id => reloaded.push(id),
       discard: async id => discarded.push(id),
+      create: async props => created.push(props),
       ...Object.fromEntries(tabEvents.map(n => [n, ev()])),
     },
     tabGroups: { query: async () => [] },
@@ -55,7 +58,7 @@ export async function loadPanel({ tabs, store, onMessage = () => {}, granted = [
     },
     storage: {
       local: {
-        get: async k => Object.fromEntries([].concat(k).filter(x => x in store).map(x => [x, structuredClone(store[x])])),
+        get: async k => Object.fromEntries([].concat(k).filter(x => x in store).map(x => [x, asStored(store[x])])),
         set: async items => {
           sets.push(structuredClone(items));
           Object.assign(store, structuredClone(items));
@@ -68,7 +71,7 @@ export async function loadPanel({ tabs, store, onMessage = () => {}, granted = [
           }
         },
       },
-      session: { get: async () => ({}) },
+      session: { get: async k => Object.fromEntries([].concat(k).filter(x => x in session).map(x => [x, asStored(session[x])])) },
       onChanged: { addListener: fn => storageListeners.push(fn) },
     },
     permissions: {
@@ -150,7 +153,7 @@ export async function loadPanel({ tabs, store, onMessage = () => {}, granted = [
   };
 
   return {
-    w, $, rows, row, click, selected, fire, drag, key, sent, activated, removed, reloaded, discarded, copied, sets, store, permissions,
+    w, $, rows, row, click, selected, fire, drag, key, sent, activated, removed, reloaded, discarded, created, copied, sets, store, permissions, notify,
     dragImages, menu, hint, rightClick, more, pick, buttons, hoverButton, mousedown, search, last: () => sent.at(-1),
   };
 }

@@ -3,7 +3,7 @@
   "name": "TabTrees Probe",
   "version": "0.1.0",
   "description": "Probes what Opera allows for TabTrees: sidebar panel, tab openers, Tab Islands",
-  "permissions": ["tabs", "webNavigation", "storage", "tabGroups", "clipboardWrite"],
+  "permissions": ["tabs", "webNavigation", "storage", "tabGroups", "clipboardWrite", "alarms"],
   "optional_host_permissions": ["https://*/*", "http://*/*"],
   "background": {
     "service_worker": "background.js",

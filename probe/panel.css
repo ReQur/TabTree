@@ -445,19 +445,135 @@ body.wp .search, body.wp .pin, body.wp .selbar, body.wp .menu, body.wp .toast, b
 .wp-name span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wp-note { padding: 2px 12px 0; font-size: 11px; color: var(--muted); }
 
-/* Settings › Statuses (probe) */
-.sites { margin: 6px 12px 8px; padding: 0; list-style: none; border-radius: var(--r); box-shadow: inset 0 0 0 1px var(--line); }
-.site { padding: 6px 10px 8px; font-size: 11.5px; }
+/* ---- statuses ----
+   Color means finished or needs you; ink and motion mean still going. A mark is a circle with a glyph, or the line
+   under the row, so it never reads as one of the nine folder colors (squares, glyphs, rails). */
+:root {
+  --st-ok: #1a7f37; --st-fail: #cf222e; --st-warn: #9a6700; --st-merged: #8250df;
+  --st-run: #3d434d; --st-idle: #6e7781; --st-track: rgba(28, 32, 38, .12);
+  --ln-aur1: #d6448f; --ln-aur2: #6f5bff; --ln-fail: #d7263d; --ln-fail2: #f07043; --ln-warn: #c07a00; --ln-warn2: #eb8f2c; --ln-ga: 38%;
+}
+body.wp { --st-track: rgba(40, 20, 60, .15); --ln-aur1: #c8367f; --ln-aur2: #7d5cff; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --st-ok: #3fb950; --st-fail: #f85149; --st-warn: #d29922; --st-merged: #a371f7;
+    --st-run: #c9ced8; --st-idle: #8b919c; --st-track: rgba(255, 255, 255, .15);
+    --ln-aur1: #9db8ff; --ln-aur2: #d0a6ff; --ln-fail: #ff5c57; --ln-fail2: #ff9a62; --ln-warn: #f5b83d; --ln-warn2: #ff8e4a; --ln-ga: 60%;
+  }
+  body.wp { --st-run: #eceef5; --st-track: rgba(255, 255, 255, .22); --ln-aur1: #ff9fd0; --ln-aur2: #a99bff; }
+  .i.st.run { filter: drop-shadow(0 0 3px color-mix(in srgb, currentColor 55%, transparent)); }
+}
+
+/* Marks: 14px in rows. The running one's arc spins. */
+.i.st { width: 14px; height: 14px; stroke-width: 1.6; }
+.i.st.ok { color: var(--st-ok); } .i.st.fail { color: var(--st-fail); } .i.st.warn { color: var(--st-warn); }
+.i.st.merged { color: var(--st-merged); } .i.st.run { color: var(--st-run); } .i.st.idle { color: var(--st-idle); }
+.i.st.unk { color: var(--faint); }
+.idle-ink { color: var(--muted); }
+.i.st.fail, .i.st.warn { filter: drop-shadow(0 0 3px color-mix(in srgb, currentColor 55%, transparent)); }
+.i.st .trk { opacity: .3; }
+.i.st .arc { transform: rotate(-90deg); transform-origin: 8px 8px; }
+.i.st.spin .arc { animation: st-spin 1.1s linear infinite; }
+@keyframes st-spin { from { transform: rotate(-90deg); } to { transform: rotate(270deg); } }
+.stale { opacity: .45; }
+
+/* The status cluster sits last in the row, before the count, so statuses line up in one column. */
+.stc { flex: none; display: inline-flex; align-items: center; gap: 5px; font: 500 10.5px/16px var(--font); color: var(--muted); font-variant-numeric: tabular-nums; cursor: default; }
+.stc .n { display: inline-flex; align-items: center; gap: 2px; }
+.stc .n .i { width: 12px; height: 12px; }
+.stc .n.ready { color: var(--st-ok); }
+.row.fin .title, .row.fin .key, .row.fin .kind { color: var(--muted); }
+.row.fin .icon, .row.fin .noicon { opacity: .55; }
+
+/* The line under the row, from the favicon to the right edge ("aurora"): running fills with two hues of the
+   accent's family and a soft glow while a highlight sweeps along it; failed is full, coral to red; passed has none. */
+.pbar { --a: var(--ln-aur1); --b: var(--ln-aur2); position: absolute; left: calc(20px + var(--d, 0) * var(--indent)); right: 6px; bottom: 1px; height: 2px; border-radius: 2px; background: var(--st-track); pointer-events: none; }
+.pbar i { position: relative; display: block; height: 100%; overflow: hidden; border-radius: inherit; background: linear-gradient(90deg, var(--b), var(--a)); box-shadow: 0 0 8px color-mix(in srgb, var(--a) var(--ln-ga), transparent), 0 0 2px color-mix(in srgb, var(--b) 80%, transparent); }
+.pbar i::before { content: ""; position: absolute; top: 0; bottom: 0; left: -36px; width: 36px; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .75), transparent); animation: st-sweep 1.8s cubic-bezier(.4, 0, .2, 1) infinite; }
+.pbar.fail { --a: var(--ln-fail); --b: var(--ln-fail2); background: linear-gradient(90deg, var(--b), var(--a)); box-shadow: 0 0 8px color-mix(in srgb, var(--a) var(--ln-ga), transparent); }
+@keyframes st-sweep { to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) {
+  .pbar i::before { display: none; }
+  .i.st.spin .arc { animation: none; }
+}
+
+/* A Jira ticket's status: a lozenge in its category; the person dot when it is on you. */
+.js { flex: none; display: inline-flex; align-items: center; gap: 3px; height: 16px; padding: 0 6px 0 4px; border-radius: 8px; font: 600 9.5px/16px var(--font); letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+.js .i.st { width: 10px; height: 10px; stroke-width: 2; }
+.js.todo { color: var(--muted); box-shadow: inset 0 0 0 1px var(--chip-line); }
+.js.prog { color: var(--fg-2); background: var(--chip); }
+.js.done { color: var(--st-ok); background: color-mix(in srgb, var(--st-ok) 15%, transparent); }
+.me { flex: none; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; color: var(--accent-fg); background: var(--accent); }
+.me .i { width: 10px; height: 10px; stroke-width: 2; }
+
+/* Changed while you weren't looking: a dot in the new status's color, until the tab is opened. */
+.chg { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.chg.fail { background: var(--st-fail); box-shadow: 0 0 0 3px color-mix(in srgb, var(--st-fail) 22%, transparent); }
+.chg.ok { background: var(--st-ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--st-ok) 22%, transparent); }
+
+/* Summary on a folder or a folded row: failed and running only, worst first. */
+.sum { flex: none; display: inline-flex; align-items: center; gap: 6px; font: 600 10.5px/16px var(--font); font-variant-numeric: tabular-nums; }
+.sum span { display: inline-flex; align-items: center; gap: 2px; }
+.sum .i.st { width: 12px; height: 12px; }
+.sum .fail { color: var(--st-fail); } .sum .run { color: var(--st-run); }
+
+/* The status bar's summary: failed and running search, finished offers to close them, a site in trouble. */
+.stsum { flex: none; display: flex; align-items: center; gap: 2px; min-width: 0; margin-left: -6px; }
+.stsum:empty { display: none; }
+.stsum button { flex: none; display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 5px; border: 0; border-radius: var(--r-s); font: inherit; color: inherit; background: none; white-space: nowrap; cursor: pointer; }
+.stsum button:hover { background: var(--hover); }
+.stsum .i.st { width: 12px; height: 12px; }
+.stsum .fail { color: var(--st-fail); } .stsum .warn { color: var(--st-warn); }
+
+/* A site in trouble, above the list. */
+.stbanner { display: flex; align-items: flex-start; gap: 6px; margin: 2px 8px 6px; padding: 6px 8px; border-radius: var(--r); font-size: 11px; line-height: 15px; color: var(--fg); background: var(--warn-bg); }
+.stbanner .i { margin-top: 0; }
+.link { padding: 0; border: 0; font: inherit; font-weight: 600; color: var(--accent-text); background: none; cursor: pointer; }
+.link:hover { text-decoration: underline; }
+
+/* The details card: hover a status for 400 ms, or click it to pin it. */
+.pop { position: fixed; z-index: 9; width: 300px; max-width: calc(100vw - 16px); padding: 10px 12px; border-radius: var(--r-l); font-size: 12px; line-height: 16px; background: var(--raised); box-shadow: var(--shadow), inset 0 0 0 1px var(--line); }
+body.wp .pop { backdrop-filter: blur(14px) saturate(1.3); }
+.pop .ph { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.pop .ph .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pop .pm { margin: 2px 0 0; font-size: 11px; color: var(--muted); }
+.pop .sep { height: 1px; margin: 9px -12px 7px; background: var(--line); }
+.pop .ln { display: flex; align-items: center; gap: 6px; min-height: 22px; font-size: 11.5px; }
+.pop .ln .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pop .ln .r { color: var(--muted); font-variant-numeric: tabular-nums; }
+.pop .ln.child { padding-left: 20px; min-height: 18px; color: var(--fg-2); }
+.pop .ln.strong { font-weight: 600; }
+.pop .ln.ok { color: var(--st-ok); } .pop .ln.fail { color: var(--st-fail); }
+.pop .lz { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 11px; color: var(--muted); }
+.pop .lbl { margin: 2px 0 4px; font: 600 10px/1 var(--font); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.pop .pf { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 9px; font-size: 11px; color: var(--muted); }
+.pop .banner { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; padding: 6px 8px; border-radius: var(--r-s); font-size: 11px; line-height: 15px; color: var(--fg); background: var(--warn-bg); }
+.meter { height: 4px; margin: 6px 0 2px; border-radius: 2px; overflow: hidden; background: var(--st-track); }
+.meter i { display: block; height: 100%; border-radius: 2px; background: var(--st-run); }
+.pop .caret { position: absolute; top: -5px; width: 10px; height: 10px; transform: rotate(45deg); background: var(--raised); box-shadow: -1px -1px 0 0 var(--line); }
+.pop.above .caret { top: auto; bottom: -5px; box-shadow: 1px 1px 0 0 var(--line); }
+
+/* Settings › Statuses: one row per site. */
+.sites { margin: 2px 12px 8px; padding: 0; list-style: none; border-radius: var(--r); box-shadow: inset 0 0 0 1px var(--line); }
+.site { padding: 6px 8px 6px 10px; }
 .site + .site { border-top: 1px solid var(--line); }
-.site .head { display: flex; align-items: center; gap: 8px; min-height: 24px; }
-.site .grow { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.site .m { font-size: 11px; color: var(--muted); }
+.site .line { display: flex; align-items: center; gap: 10px; min-height: 32px; }
+.site .grow { flex: 1; min-width: 0; }
+.site b { display: block; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.site small { display: flex; align-items: center; gap: 4px; font-size: 11px; line-height: 15px; color: var(--muted); }
+.site small.fail { color: var(--st-fail); } .site small.warn { color: var(--st-warn); } .site small.ok { color: var(--st-ok); }
 .site .ctx { margin: 6px 0 2px; font-size: 10.5px; font-weight: 600; color: var(--muted); }
 .check { display: flex; align-items: flex-start; gap: 5px; font-size: 11px; line-height: 16px; }
 .check .i { flex: none; margin-top: 2px; color: var(--ok); }
 .check.bad .i { color: var(--danger); }
 .check b { flex: none; font-weight: 600; }
 .check span { min-width: 0; overflow-wrap: anywhere; color: var(--muted); }
+
+/* Narrow panels keep the icon and drop the words. */
+@media (max-width: 340px) {
+  .js .t, .stc .opt, .stsum .w { display: none; }
+  .js { padding: 0 3px; }
+}
 .slider { padding: 10px 12px 2px; }
 .slider > div { display: flex; justify-content: space-between; align-items: baseline; }
 .slider label { font-weight: 600; }

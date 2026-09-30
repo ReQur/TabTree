@@ -2,7 +2,8 @@ import { ticketKey, cleanTitle, rowLabel, kindLabel, hostOf, urlKey, islandName,
 import { buildTree, tabIdsUnder, nodeRef, folderRef } from './tree.js';
 import { icon } from './icons.js';
 import { tonesOf, wallTokens } from './wallpaper.js';
-import { detectSites, probeSite, originPattern, KIND_NAMES, PAGE_TO_OPEN } from './integrations.js';
+import { detectSites, probeSite, originPattern, describeWatched, watchedOf, MAPS, KIND_NAMES, PAGE_TO_OPEN } from './integrations.js';
+import { rowStatus, summaryOf, barOf, statusWords, cardOf, MARKS, ago } from './statuses.js';
 
 const $ = sel => document.querySelector(sel);
 const listEl = $('#list');
@@ -65,6 +66,13 @@ let granted = new Set(); // origin patterns Opera lets the extension request (op
 let apiProbe = {}; // the background's last probe answers, per site: { kind, origin, t, results } or { t, error }
 const panelProbes = new Map(); // this panel's own probe answers, per site
 const testing = new Set(); // sites whose probe is on its way
+let status = {}; // what the watch knows about the tabs' tickets, merge requests, pipelines, jobs and builds
+let watchMemo = {}; // the watch's timings, from storage.session: when each site last answered (`checked`)
+let now = Date.now(); // the time of the drawing, for the statuses' "ago" and progress
+let jiraWatched = false; // the watch asks a Jira site, so a ticket without a status yet is being checked
+let tabById = new Map();
+let running = false; // a line under a row runs: the drawing is renewed every 30 s, for its fill and its times
+let tick = 0;
 
 async function load() {
   let list = await chrome.tabs.query({ currentWindow: true });
@@ -74,13 +82,15 @@ async function load() {
   tabs = current;
   otherIds = new Set(others.map(t => t.id));
   dupIds = findDuplicates(tabs);
-  const stored = await chrome.storage.local.get(['parents', 'folders', 'ranks', 'settings', 'declined', 'apiProbe']);
+  const stored = await chrome.storage.local.get(['parents', 'folders', 'ranks', 'settings', 'declined', 'apiProbe', 'status']);
   parents = stored.parents ?? {};
   folders = stored.folders ?? {};
   ranks = stored.ranks ?? {};
   settings = stored.settings ?? {};
   declined = stored.declined ?? {};
   apiProbe = stored.apiProbe ?? {};
+  status = stored.status ?? {};
+  watchMemo = (await chrome.storage.session.get('watch').catch(() => ({}))).watch ?? {};
   granted = new Set((await chrome.permissions?.getAll?.())?.origins ?? []);
 }
 
@@ -579,8 +589,15 @@ listEl.addEventListener('contextmenu', e => {
 });
 document.addEventListener('mousedown', e => {
   if (!menuEl.hidden && !menuEl.contains(e.target)) closeMenu();
+  if (card && !card.el.contains(e.target)) closeCard();
 }, true);
 listEl.addEventListener('scroll', closeMenu);
+// Only a scroll that moves the list: a redraw puts the list back where it was, and may say so with a scroll event.
+let listTop = 0;
+listEl.addEventListener('scroll', () => {
+  if (Math.abs(listEl.scrollTop - listTop) >= 1) closeCard();
+  listTop = listEl.scrollTop;
+});
 window.addEventListener('blur', closeMenu);
 menuEl.addEventListener('keydown', e => {
   if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
@@ -934,6 +951,102 @@ function folderCountTitle(n, topLevel) {
   return n >= 2 ? `${plural(n, 'tab')} · an island in Opera's tab strip` : '1 tab · no island: Opera keeps no one-tab islands';
 }
 
+// ---- statuses in the tree ----
+// Each tab row shows its status last, before the count: marks (or a ticket's lozenge), and a line under the row
+// while its pipeline or build runs, or once it failed. Folders and folded rows sum up what failed and what runs
+// under them. Hovering a status for 400 ms opens its details card; a click pins it.
+
+// Whether the watch asks about such a page: its site connected, and statuses on.
+function watchedSite(map, tab) {
+  if (settings.statuses === false) return false;
+  if (map === 'tickets') return jiraWatched;
+  try {
+    return granted.has(`${new URL(tab.url).origin}/*`);
+  } catch {
+    return false;
+  }
+}
+
+function statusIcon(state, cls = 'i st') {
+  const [name, color] = MARKS[state] ?? MARKS.unknown;
+  return icon(name, `${cls} ${color}`);
+}
+
+function lozengeEl({ cls, name, state }) {
+  const lz = el('span', `js ${cls}`);
+  lz.append(icon(MARKS[state]?.[0] ?? 'stTodo', 'i st'), el('span', 't', name));
+  return lz;
+}
+
+// A row's status: the changed dot, the marks or the ticket's lozenge, and the line under the row. `open(pinned)`
+// opens its card; `ref` is the row's.
+function statusParts(st, open, ref) {
+  if (!st || !(st.marks?.length || st.lozenge)) return [];
+  const box = el('span', 'stc');
+  // The card tells more: no tooltip over it.
+  box.title = '';
+  if (st.changed && settings.markChanged !== false) {
+    const dot = el('span', st.changed === 'news' ? 'chg' : `chg ${st.changed}`);
+    dot.setAttribute('aria-label', 'Changed while you were away');
+    box.append(dot);
+  }
+  if (st.me) {
+    const me = el('span', 'me');
+    me.setAttribute('aria-label', 'Assigned to you');
+    me.append(icon('stMe', 'i'));
+    box.append(me);
+  }
+  if (st.lozenge) box.append(lozengeEl(st.lozenge));
+  for (const m of st.marks ?? []) {
+    if (m.text) {
+      const n = el('span', ['n', m.opt && 'opt', m.cls].filter(Boolean).join(' '));
+      if (m.icon) n.append(icon(m.icon, 'i s'));
+      n.append(m.text);
+      box.append(n);
+    } else {
+      const mark = statusIcon(m.state);
+      mark.setAttribute('aria-label', m.title ?? m.state);
+      mark.setAttribute('role', 'img');
+      box.append(mark);
+    }
+  }
+  box.classList.toggle('stale', !!st.stale);
+  box.onmouseenter = () => hoverCard(open, ref);
+  box.onmouseleave = leaveCard;
+  box.onclick = e => {
+    e.stopPropagation();
+    open(true);
+  };
+  const parts = [box];
+  if (st.bar) {
+    const bar = el('span', st.bar.state === 'fail' ? 'pbar fail' : 'pbar');
+    if (st.bar.state !== 'fail') {
+      const fill = el('i');
+      fill.style.width = `${Math.round(st.bar.fill * 100)}%`;
+      bar.append(fill);
+      running = true;
+    }
+    bar.classList.toggle('stale', !!st.stale);
+    parts.push(bar);
+  }
+  return parts;
+}
+
+// What failed and what runs under a folder or a folded row.
+function summaryPart(ids) {
+  if (settings.statuses === false) return [];
+  const { parts, stale } = summaryOf(ids.map(id => tabById.get(id)).filter(Boolean), status, now);
+  if (!parts.length) return [];
+  const sum = el('span', stale ? 'sum stale' : 'sum');
+  for (const { state, count } of parts) {
+    const part = el('span', state);
+    part.append(icon(MARKS[state][0], state === 'run' ? 'i st run spin' : 'i st'), String(count));
+    sum.append(part);
+  }
+  sum.title = parts.map(({ state, count }) => `${count} ${state === 'fail' ? 'failed' : 'running'}`).join(', ');
+  return [sum];
+}
+
 function renderFolder(node, depth, out) {
   const f = node.folder;
   const id = `${view}:${nodeRef(node)}`;
@@ -960,6 +1073,7 @@ function renderFolder(node, depth, out) {
     dot,
     el('span', 'title', f.name),
     ...dupButton(ids),
+    ...summaryPart(ids),
     actions(iconButton('ab', 'newFolder', 'New folder inside', 'New folder inside', () => addFolder(node)), moreButton(node), grip()),
     countPill(String(ids.length), folderCountTitle(ids.length, depth === 0)),
   );
@@ -1007,6 +1121,18 @@ function renderNode(node, depth, out) {
   // A top-level ticket can become a folder; its actions leave out the drag handle to stay three wide.
   const toFolder = ticket && node.parent?.root && iconButton('ab', 'toFolder', `Put ${ticket.key} into a new folder`,
     `Put ${ticket.key} and everything under it into a new folder`, () => familyToFolder(node));
+  const st = settings.statuses === false ? null : rowStatus(t, { status, ticketRoot: !!ticket, watched: watchedSite, now });
+  const parts = statusParts(st, pinned => showCard(parts[0], node, pinned), nodeRef(node));
+  row.append(...parts);
+  // The page kind (MR !42, pipeline #7) opens the card too, in place of its plain tooltip.
+  const kind = parts.length && row.querySelector('.kind');
+  if (kind) {
+    kind.title = '';
+    kind.onmouseenter = () => hoverCard(pinned => showCard(parts[0], node, pinned), nodeRef(node));
+    kind.onmouseleave = leaveCard;
+  }
+  row.classList.toggle('fin', !!st?.fin && settings.dimFinished !== false);
+  if (isCollapsed) row.append(...summaryPart(tabIdsUnder(node).filter(id => id !== t.id)));
   row.append(actions(
     toFolder,
     iconButton('ab', 'close', 'Close tab', 'Close tab (middle click)', () => chrome.tabs.remove(t.id)),
@@ -1130,7 +1256,7 @@ function hitRow(t, terms) {
 function renderSearch(q, out) {
   const terms = q.split(/\s+/);
   hits = allTabs.filter(t => {
-    const hay = `${t.title} ${t.url} ${ticketKey(t) ?? ''} ${kindLabel(t.url) ?? ''}`.toLowerCase();
+    const hay = `${t.title} ${t.url} ${ticketKey(t) ?? ''} ${kindLabel(t.url) ?? ''} ${statusWords(t, status)}`.toLowerCase();
     return terms.every(s => hay.includes(s));
   });
   selected = Math.max(0, Math.min(selected, hits.length - 1));
@@ -1138,7 +1264,7 @@ function renderSearch(q, out) {
     const clear = button('btn sm', 'Clear search', 'Clear the search (Esc)', clearSearch);
     clear.append(el('kbd', 'k', 'Esc'));
     out.append(emptyState('search', 'No tabs match',
-      'Every word has to match a title, URL, ticket key or page kind: mr, pipeline, jira. All workspaces are searched.', clear));
+      'Every word has to match a title, URL, ticket key, page kind (mr, pipeline, jira) or status (failed, running, merged, ready, done, rebase). All workspaces are searched.', clear));
     return;
   }
   const meta = el('div', 'meta');
@@ -1235,6 +1361,15 @@ function renderSettings() {
   section('Background');
   out.append(backgroundSettings());
 
+  section('Statuses');
+  option('Show statuses', "Tickets, merge requests, pipelines and builds of your open tabs, read with your browser's sign-in. Nothing leaves the browser.",
+    toggleBox('set-statuses', settings.statuses !== false, on => setSetting('statuses', on)));
+  out.append(sitesSettings());
+  option('Dim finished rows', 'Merged and closed merge requests, Done tickets. "Finished" in the status bar closes them.',
+    toggleBox('set-dim-finished', settings.dimFinished !== false, on => setSetting('dimFinished', on)));
+  option('Mark what changed while you were away', 'A dot next to the status until you open the tab.',
+    toggleBox('set-mark-changed', settings.markChanged !== false, on => setSetting('markChanged', on)));
+
   section('Tree');
   const keys = Object.keys(declined).sort();
   const chips = el('div', 'chips');
@@ -1268,9 +1403,6 @@ function renderSettings() {
   if (!islands.childElementCount) islands.append(el('li', 'il m', 'No folders on the top level yet.'));
   out.append(islands);
 
-  section('Statuses (probe)');
-  out.append(sitesSettings());
-
   section('Diagnostics');
   option('Report', "Opera's version and APIs, counts, the snapshot and the last 60 events. Paste it into a session.",
     labelButton('btn sm', 'copy', 'Copy', 'Copy the report', copyReport));
@@ -1290,13 +1422,13 @@ function renderSettings() {
 
 function sitesSettings() {
   const out = document.createDocumentFragment();
-  out.append(el('div', 'wp-note', 'Can TabTree read the statuses of tickets and merge requests with your browser session, without tokens? Connect a site, then Test. Test only reads.'));
   const sites = detectSites(allTabs);
   if (sites.length) {
     const list = el('ul', 'sites');
     for (const site of sites) list.append(siteItem(site));
     out.append(list);
   }
+  out.append(el('div', 'wp-note', 'Checked every 30 s while something runs, every 2 min for open items, every 15 min for finished ones.'));
   // Only the sites of open tabs are listed, so say how to bring in a missing one.
   const absent = Object.keys(KIND_NAMES).filter(kind => !sites.some(s => s.kind === kind));
   if (absent.length) {
@@ -1307,34 +1439,336 @@ function sitesSettings() {
   return out;
 }
 
+// A site: its favicon and host, how it stands, and what to do: Connect, Sign in, Retry; ⋯ tests or disconnects.
 function siteItem(site) {
   const li = el('li', 'site');
   li.dataset.site = site.base;
-  const head = el('div', 'head');
-  const name = el('span', 'grow', site.base.replace(/^https?:\/\//, ''));
-  name.title = site.base;
-  head.append(el('span', 'kind', KIND_NAMES[site.kind]), name);
-  if (!granted.has(originPattern(site))) {
-    head.append(button('btn sm primary', 'Connect', `Let TabTree request ${site.origin}`, () => connectSite(site)));
-  } else {
-    const busy = testing.has(site.base);
-    const test = button('btn sm primary', busy ? 'Testing…' : 'Test', 'Ask the site who you are, and about a page of the open tabs', () => testSite(site));
-    test.disabled = busy;
-    head.append(test, button('btn sm', 'Disconnect', `Take back the access to ${site.origin}`, () => disconnectSite(site)));
-  }
-  const asks = [
-    'who you are',
-    site.keys.length && `${plural(site.keys.length, 'ticket')} of the open tabs`,
-    site.mrs.length && 'a merge request and its approvals',
-    site.pipelines.length && 'a pipeline',
-    site.jobs.length && 'a job',
-    site.builds.length && 'a build',
-  ].filter(Boolean);
-  const sampled = { jira: site.keys, gitlab: site.mrs, jenkins: site.builds }[site.kind].length > 0;
-  li.append(head, el('div', 'm', `Asks for ${asks.join(', ')}.${sampled ? '' : ` Open ${PAGE_TO_OPEN[site.kind]} to try one too.`}`));
-  if (apiProbe[site.base]) li.append(checkList('From the background', apiProbe[site.base]));
-  if (panelProbes.has(site.base)) li.append(checkList('From this panel', panelProbes.get(site.base)));
+  const host = site.base.replace(/^https?:\/\//, '');
+  const tab = allTabs.find(t => (t.url ?? '').startsWith(`${site.base}/`));
+  const words = el('span', 'grow');
+  const name = el('b', null, host);
+  name.title = `${KIND_NAMES[site.kind]} · ${site.base}`;
+  words.append(name, siteState(site));
+  const line = el('div', 'line');
+  line.append(tab ? favicon(tab) : el('span', 'noicon', host[0].toUpperCase()), words, ...siteActions(site));
+  li.append(line);
+  if (apiProbe[site.base]) li.append(checkList('Test from the background', apiProbe[site.base]));
+  if (panelProbes.has(site.base)) li.append(checkList('Test from this panel', panelProbes.get(site.base)));
   return li;
+}
+
+function watchCounts(site) {
+  const inSite = map => Object.keys(status[map] ?? {}).filter(id => site.kind === 'jira' || id.startsWith(`${site.base}/`)).length;
+  const kinds = { jira: [['tickets', 'ticket']], gitlab: [['mrs', 'merge request'], ['pipelines', 'pipeline'], ['jobs', 'job']], jenkins: [['builds', 'build'], ['projects', 'Jenkins job']] };
+  return kinds[site.kind].filter(([map]) => inSite(map)).map(([map, word]) => plural(inSite(map), word));
+}
+
+// How a site stands for the statuses: a line under its name, colored when it needs you.
+function siteState(site) {
+  const small = (cls, name, text) => {
+    const line = el('small', cls);
+    if (name) line.append(icon(name, 'i s'));
+    line.append(text);
+    return line;
+  };
+  if (!granted.has(originPattern(site))) return small(null, 'stNotConnected', 'Not connected: TabTree may not read this site');
+  if (settings.statuses === false) return small(null, null, 'Connected · statuses are off');
+  const health = status.sites?.[site.base];
+  const checked = watchMemo.checked?.[site.base];
+  if (health?.error === 'signed out') return small('warn', 'stSignedOut', `Signed out${checked ? ` · last known ${clock(checked)}` : ''}`);
+  if (health && !health.ok) return small('fail', 'stOffline', `Offline · VPN?${checked ? ` last OK ${clock(checked)}` : ''}`);
+  if (!checked) return small(null, null, 'Connected · checking…');
+  return small('ok', 'done', ['Connected', `checked ${ago(checked, now)}`, ...watchCounts(site)].join(' · '));
+}
+
+function siteActions(site) {
+  if (!granted.has(originPattern(site))) return [button('btn sm', 'Connect', `Let TabTree read ${site.origin}`, () => connectSite(site))];
+  const host = hostOf(site.base);
+  const health = status.sites?.[site.base];
+  const acts = [];
+  if (health?.error === 'signed out') acts.push(button('btn sm primary', 'Sign in', `Open ${host} to sign in again`, () => signIn(site.base)));
+  else if (health && !health.ok) acts.push(labelButton('btn sm', 'stRetry', 'Retry', 'Ask it again now', () => retrySite(site.base)));
+  const more = iconButton('ib', 'more', `More for ${host}`, 'Test the connection, or disconnect', () => {
+    const r = more.getBoundingClientRect();
+    openMenu([
+      {
+        label: testing.has(site.base) ? 'Testing…' : 'Test the connection',
+        icon: 'stRetry',
+        hint: 'Who you are, and a page of the open tabs',
+        run: () => testSite(site),
+      },
+      '-',
+      { label: 'Disconnect', icon: 'close', hint: 'TabTree stops reading this site', danger: true, run: () => disconnectSite(site) },
+    ], { x: r.right ?? 0, y: (r.bottom ?? 0) + 2, above: (r.top ?? 0) - 2, alignRight: true });
+  });
+  more.setAttribute('aria-haspopup', 'menu');
+  acts.push(more);
+  return acts;
+}
+
+// ---- statuses around the tree: the status bar, banners, the details card ----
+
+function searchFor(words) {
+  qEl.value = words;
+  selected = 0;
+  if (view !== 'tree') switchView('tree');
+  else render();
+}
+
+// "2 failed" and "3 running" search for them; "2 finished" offers to close them; a site in trouble says so.
+function renderStatusSum() {
+  const box = $('#stsum');
+  box.replaceChildren();
+  if (settings.statuses === false) return;
+  const bar = barOf(tabs.filter(t => !t.pinned), status, now);
+  for (const s of bar.trouble) {
+    const out = s.error === 'signed out';
+    const host = hostOf(s.base);
+    const b = button(out ? 'warn' : 'fail', null, out ? `Signed out of ${host}: open it to sign in again` : `Can't reach ${host}: ask it again`, () => (out ? signIn(s.base) : retrySite(s.base)));
+    b.append(icon(out ? 'stSignedOut' : 'stOffline', 'i st'), `${KIND_NAMES[s.kind]}: ${out ? 'sign in' : 'offline'}`);
+    box.append(b);
+  }
+  const count = (cls, iconName, n, word, title, run) => {
+    const b = button(cls, null, title, run);
+    b.append(icon(iconName, iconName === 'stRun' ? 'i st run spin' : iconName === 'stOk' ? 'i st idle' : 'i st'), String(n), el('span', 'w', ` ${word}`));
+    return b;
+  };
+  if (bar.fail) box.append(count('fail', 'stFail', bar.fail, 'failed', 'Show what failed', () => searchFor('failed')));
+  if (bar.run) box.append(count('', 'stRun', bar.run, 'running', 'Show what is running', () => searchFor('running')));
+  if (bar.finished.length) {
+    const finished = count('', 'stOk', bar.finished.length, 'finished', 'Close finished: merged merge requests and Done tickets', () => {
+      const r = finished.getBoundingClientRect();
+      openMenu([{
+        label: `Close ${plural(bar.finished.length, 'finished tab')}`,
+        icon: 'closeTabs',
+        hint: 'Merged and closed merge requests, Done tickets',
+        danger: true,
+        run: () => chrome.tabs.remove(bar.finished),
+      }], { x: r.left ?? 0, y: (r.top ?? 0) - 4, above: (r.top ?? 0) - 4 });
+    });
+    box.append(finished);
+  }
+}
+
+// A connected site that signed out or can't be reached: above the tree, with what to do.
+function troubleBanners() {
+  if (settings.statuses === false) return [];
+  return Object.entries(status.sites ?? {}).filter(([, s]) => !s.ok).map(([base, s]) => {
+    const out = s.error === 'signed out';
+    const host = hostOf(base);
+    const checked = watchMemo.checked?.[base];
+    const box = el('div', 'stbanner');
+    box.setAttribute('role', 'status');
+    box.dataset.site = base;
+    const words = el('span', null, `${out ? `Signed out of ${host}.` : `Can't reach ${host}: no network, or the VPN is off.`}${checked ? ` Its statuses are from ${clock(checked)}.` : ''} `);
+    words.append(button('link', out ? 'Sign in' : 'Retry', out ? `Open ${host} to sign in again` : 'Ask it again now', () => (out ? signIn(base) : retrySite(base))));
+    box.append(icon(out ? 'stSignedOut' : 'stOffline', `i st ${out ? 'warn' : 'fail'}`), words);
+    return box;
+  });
+}
+
+// Signing in happens on the site itself; the background asks again once one of its pages has loaded.
+function signIn(base) {
+  send({ type: 'openTab', url: `${base}/`, parent: -1 });
+}
+
+function retrySite(base) {
+  send({ type: 'retrySite', base });
+}
+
+// Hovering a row's status for 400 ms opens its details card; a click on the status pins it. The card closes on
+// leaving it (unless pinned), Esc, a click elsewhere, or scrolling; while open it follows the statuses.
+let card = null; // { el, ref, pinned }
+let cardTimer = 0;
+let waiting = null; // the row whose card opens when the timer is up
+
+// A redraw puts a new element under a still mouse, and the browser may tell it the mouse came in: the wait for
+// that row goes on, and its open card stays.
+function hoverCard(open, ref) {
+  if (card?.pinned) return;
+  if (card?.ref === ref) {
+    clearTimeout(cardTimer);
+    return;
+  }
+  if (waiting === ref) return;
+  clearTimeout(cardTimer);
+  waiting = ref;
+  cardTimer = setTimeout(() => {
+    waiting = null;
+    open(false);
+  }, 400);
+}
+
+function leaveCard() {
+  clearTimeout(cardTimer);
+  waiting = null;
+  if (card && !card.pinned) cardTimer = setTimeout(closeCard, 200);
+}
+
+function closeCard() {
+  clearTimeout(cardTimer);
+  waiting = null;
+  card?.el.remove();
+  card = null;
+}
+
+// A row's card is about its own page (a merge request, a pipeline, a build…), else about its ticket.
+function cardModel(node) {
+  const t = node.tab;
+  const ofTicket = !!node.ticket && !watchedOf(t).some(([map]) => map !== 'tickets');
+  const key = ofTicket ? null : ticketKey(t);
+  return cardOf(t, {
+    status,
+    now,
+    clock,
+    ticketRoot: !!node.ticket,
+    title: ofTicket ? node.ticket.title : rowLabel(t, key, null).text,
+    key,
+    branch: tabIdsUnder(node).map(id => tabById.get(id)).filter(Boolean),
+    checked: base => watchMemo.checked?.[base],
+  });
+}
+
+function cardLine({ state, icon: name, text, right, sub, strong, tone }) {
+  const line = el('div', ['ln', sub && 'child', strong && 'strong', tone].filter(Boolean).join(' '));
+  if (name === 'me') {
+    const me = el('span', 'me');
+    me.append(icon('stMe', 'i'));
+    line.append(me);
+  } else if (name) {
+    line.append(icon(name, name === 'mr' ? 'i s idle-ink' : 'i st idle'));
+  } else if (state) {
+    line.append(statusIcon(state));
+  }
+  line.append(el('span', 'grow', text));
+  if (right) line.append(el('span', 'r', right));
+  return line;
+}
+
+function cardView(m, tab) {
+  const box = el('div', 'pop');
+  box.setAttribute('role', 'dialog');
+  box.setAttribute('aria-label', `${m.key ?? m.title}: status`);
+  const ph = el('div', 'ph');
+  if (m.key) ph.append(el('span', 'key', m.key));
+  else if (m.state) ph.append(statusIcon(m.state));
+  ph.append(el('span', 'grow', m.title));
+  for (const b of m.badges ?? []) ph.append(el('span', `badge ${b}`, b));
+  box.append(el('span', 'caret'), ph);
+  if (m.meta) box.append(el('p', 'pm', m.meta));
+  if (m.lozenge) {
+    const lz = el('div', 'lz');
+    lz.append(lozengeEl(m.lozenge));
+    if (m.lozenge.note) lz.append(m.lozenge.note);
+    box.append(lz);
+  }
+  if (m.banner) {
+    const banner = el('div', 'banner');
+    const words = el('span', null, `${m.banner.text} `);
+    words.append(button('link', m.banner.action, m.banner.action === 'Retry' ? 'Ask it again now' : 'Open the site to sign in again', () => {
+      closeCard();
+      if (m.banner.action === 'Retry') retrySite(m.banner.base);
+      else signIn(m.banner.base);
+    }));
+    banner.append(icon('warning', 'i s'), words);
+    box.append(banner);
+  }
+  const body = el('div', m.stale ? 'stale' : null);
+  for (const section of m.sections) {
+    if (!section.lines.length && section.meter == null) continue;
+    if (!section.flush) body.append(el('div', 'sep'));
+    if (section.label) body.append(el('div', 'lbl', section.label));
+    if (section.meter != null) {
+      const meter = el('div', 'meter');
+      const fill = el('i');
+      fill.style.width = `${Math.round(section.meter * 100)}%`;
+      meter.append(fill);
+      body.append(meter);
+    }
+    for (const line of section.lines) body.append(cardLine(line));
+  }
+  box.append(body);
+  const foot = el('div', 'pf');
+  foot.append(el('span', null, m.footer?.text ?? ''));
+  const action = m.footer?.button;
+  if (action) {
+    foot.append(button('btn sm', action.label, action.url ?? tab.url, () => {
+      closeCard();
+      // Under the tab whose card it is: the background places it, as Opera would put it under the tab in view.
+      if (action.url) send({ type: 'openTab', url: action.url, parent: tab.id });
+      else activate(tab);
+    }));
+  }
+  box.append(foot);
+  box.onmouseenter = () => clearTimeout(cardTimer);
+  box.onmouseleave = leaveCard;
+  return box;
+}
+
+// Under the status, its right edge near the status's; above it when there is no room below.
+function placeCard(box, anchor) {
+  const a = anchor.getBoundingClientRect();
+  const W = document.documentElement.clientWidth || 420;
+  const H = document.documentElement.clientHeight || 900;
+  const { width = 300, height = 0 } = box.getBoundingClientRect();
+  const w = width || 300;
+  const right = a.right ?? (a.left ?? 0) + (a.width ?? 0);
+  const left = Math.max(8, Math.min(right + 4 - w, W - w - 8));
+  const bottom = (a.top ?? 0) + (a.height ?? 0);
+  const above = height > 0 && bottom + 6 + height > H - 8 && (a.top ?? 0) - 6 - height > 8;
+  box.style.left = `${left}px`;
+  box.style.top = `${above ? (a.top ?? 0) - 6 - height : bottom + 6}px`;
+  box.classList.toggle('above', above);
+  const center = ((a.left ?? right) + right) / 2;
+  box.querySelector('.caret').style.left = `${Math.max(8, Math.min(w - 18, center - left - 5))}px`;
+}
+
+// The tree is redrawn often (a tab in the background changes its title), so the card finds its row again.
+function showCard(anchor, node, pinned) {
+  clearTimeout(cardTimer);
+  const ref = nodeRef(node);
+  const live = anchor.isConnected ? anchor : listEl.querySelector(`.row[data-ref="${ref}"] .stc`);
+  const model = live && cardModel(nodeByRef.get(ref) ?? node);
+  if (!model) return;
+  closeCard();
+  const box = cardView(model, (nodeByRef.get(ref) ?? node).tab);
+  document.body.append(box);
+  card = { el: box, ref, pinned };
+  placeCard(box, live);
+}
+
+// Redrawn with the tree, where it is: a card follows its tab's status, and goes when the tab does.
+function updateCard() {
+  if (!card) return;
+  const node = nodeByRef.get(card.ref);
+  const model = node && !qEl.value.trim() && cardModel(node);
+  if (!model) return closeCard();
+  const box = cardView(model, node.tab);
+  box.style.cssText = card.el.style.cssText;
+  box.classList.toggle('above', card.el.classList.contains('above'));
+  box.querySelector('.caret').style.left = card.el.querySelector('.caret').style.left;
+  card.el.replaceWith(box);
+  card.el = box;
+}
+
+// For the report and the Log: how much the watch keeps, how its pipelines stand, how each site answered.
+function watchSummary() {
+  if (settings.statuses === false) return 'off';
+  const n = map => Object.keys(status[map] ?? {}).length;
+  const words = { tickets: 'ticket', mrs: 'merge request', pipelines: 'pipeline', jobs: 'job', builds: 'build', projects: 'Jenkins job' };
+  const kept = MAPS.filter(n).map(map => plural(n(map), words[map]));
+  const pipelines = [...Object.values(status.mrs ?? {}).map(m => m.pipeline), ...Object.values(status.pipelines ?? {})].filter(Boolean);
+  const byState = new Map();
+  for (const p of pipelines) byState.set(p.status, (byState.get(p.status) ?? 0) + 1);
+  const sites = Object.entries(status.sites ?? {}).map(([base, site]) => {
+    const checked = watchMemo.checked?.[base];
+    return `${KIND_NAMES[site.kind]} ${site.ok ? 'ok' : site.error}${checked ? ` at ${clock(checked)}` : ''}`;
+  });
+  return [
+    kept.join(', ') || 'nothing yet',
+    byState.size && `pipelines: ${[...byState].map(([state, count]) => `${count} ${state}`).join(', ')}`,
+    sites.length && `sites: ${sites.join(', ')}`,
+  ].filter(Boolean).join('; ');
 }
 
 function checkList(title, entry) {
@@ -1426,6 +1860,7 @@ function renderStats() {
   else if (elsewhere.size > 1) parts.push(`+${otherIds.size} in ${elsewhere.size} workspaces`);
   statsEl.textContent = parts.join(' · ');
   statsEl.title = statsEl.textContent;
+  renderStatusSum();
   const on = islandsOn();
   const islands = on ? root.children.filter(n => n.folder && tabIdsUnder(n).length >= 2) : [];
   islandsEl.hidden = on && !islands.length;
@@ -1448,6 +1883,7 @@ function redraw(...content) {
   const focused = listEl.contains(document.activeElement) ? document.activeElement.id : '';
   listEl.replaceChildren(...content);
   listEl.scrollTop = scroll;
+  listTop = listEl.scrollTop;
   if (focused) document.getElementById(focused)?.focus();
 }
 
@@ -1457,6 +1893,10 @@ function render() {
     return;
   }
   missed = false;
+  now = Date.now();
+  running = false;
+  tabById = new Map(allTabs.map(t => [t.id, t]));
+  jiraWatched = settings.statuses !== false && detectSites(allTabs).some(site => site.kind === 'jira' && granted.has(originPattern(site)));
   const tree = buildTree(tabs.filter(t => !t.pinned), parents, folders, ranks);
   root = tree.root;
   treeNodes = tree.nodes;
@@ -1468,6 +1908,7 @@ function render() {
   $('#q-clear').hidden = !qEl.value;
   $('.search .k').hidden = !!qEl.value;
   if (view !== 'tree') {
+    closeCard();
     renderSelBar();
     return view === 'log' ? renderLog() : redraw(renderSettings());
   }
@@ -1478,6 +1919,7 @@ function render() {
   } else {
     visible = [];
     rail = null;
+    out.append(...troubleBanners());
     if (!settings.onboarded && !guideLater) out.append(guideCard());
     if (!root.children.length) {
       out.append(emptyState('emptyTree', 'No tabs in this workspace', 'Open a tab and it shows up here. A tab opened from another one hangs under it.',
@@ -1490,6 +1932,9 @@ function render() {
   }
   renderSelBar();
   redraw(out);
+  updateCard();
+  clearTimeout(tick);
+  if (running) tick = setTimeout(render, 30_000);
   if (q) listEl.querySelector('.hl')?.scrollIntoView({ block: 'nearest' });
   const fresh = pendingRename && listEl.querySelector(`[data-folder="${pendingRename}"]`);
   if (fresh) {
@@ -1591,9 +2036,12 @@ async function buildReport() {
     `- Snapshot for restarts: ${d.snapshot}`,
     `- Wallpaper: ${wallpaperLine()}`,
     `- Statuses probe: permissions API ${yes(chrome.permissions)}; connected: ${[...granted].join(', ') || 'none'}`,
+    `- Statuses watch: ${watchSummary()}`,
   ];
   const probes = probeLines();
   if (probes.length) lines.push('', '### Statuses probe', ...probes);
+  const watched = MAPS.flatMap(map => Object.entries(status[map] ?? {}).map(([id, data]) => `- ${describeWatched(map, id, data)} (since ${clock(data.t)})`));
+  if (watched.length) lines.push('', '### Statuses', ...watched);
   lines.push('', '### Events', '```', ...d.log.map(fmtEvent), '```');
   lines.push('', '### Background tab changes', '```', ...d.changes.map(fmtEvent), '```');
   return lines.join('\n');
@@ -1678,6 +2126,7 @@ async function renderLog() {
   item('Statuses', [
     `${plural(detectSites(allTabs).length, 'site')} in tabs · ${granted.size} connected`,
     ...probed.map(p => `${KIND_NAMES[p.kind]} ${p.results.filter(r => r.ok).length} of ${p.results.length} checks`),
+    `watch: ${watchSummary()}`,
   ].join(' · '));
   const seg = el('div', 'seg');
   seg.setAttribute('role', 'tablist');
@@ -2073,6 +2522,7 @@ function showView() {
 }
 
 function switchView(next) {
+  closeCard();
   view = next;
   if (next !== 'settings') prefs.set('view', next);
   showView();
@@ -2113,7 +2563,9 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape') closeMenu();
     return;
   }
-  if (e.key === 'Escape' && armed) {
+  if (e.key === 'Escape' && card) {
+    closeCard();
+  } else if (e.key === 'Escape' && armed) {
     disarm();
   } else if (e.key === 'Escape') {
     paused = false;
@@ -2148,7 +2600,7 @@ chrome.permissions?.onRemoved?.addListener(refresh);
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   if ('wallpaper' in changes) loadWallpaper();
-  if (['parents', 'folders', 'ranks', 'settings', 'declined'].some(k => k in changes)) refresh();
+  if (['parents', 'folders', 'ranks', 'settings', 'declined', 'status'].some(k => k in changes)) refresh();
   else if (view === 'log') render();
 });
 
