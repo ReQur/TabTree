@@ -44,6 +44,11 @@ A setup guide above the tree lists these steps until you dismiss it. **Settings*
 tickets kept out of automatic folders. The **Log** view and **Copy report** show what the extension sees and does,
 for troubleshooting.
 
+## Privacy
+
+Everything stays in your browser: no server, no analytics. Statuses are read only from the sites you connect.
+The full policy is in [PRIVACY.md](PRIVACY.md).
+
 ## Development
 
 No build step: `probe/` is loaded as it is. The tests run in Node against fakes of the browser's APIs:
