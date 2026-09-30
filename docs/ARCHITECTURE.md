@@ -286,6 +286,9 @@ Settings › Backup. The file is JSON: `{ tabtree: 1, savedAt, folders, ranks, d
   toolbar button, with the sidebar's title and icons) and `minimum_chrome_version: 116` (`setPanelBehavior()`).
 - The background calls `chrome.sidePanel?.setPanelBehavior({ openPanelOnActionClick: true })` at every start, so the
   toolbar button opens the panel. In Opera there is no `chrome.sidePanel`, and nothing happens.
+- `store/` has the rest of publishing: `listing.md` (texts, permission justifications, the privacy form), `images/`
+  (screenshots, promo tile, Edge's logo) and `screens/`, which makes the screenshots from the real extension in Chrome
+  for Testing with sample data (see `store/README.md`). `PRIVACY.md` is the policy the listings link to.
 - `probe/manifest.json` stays Opera's, with no `side_panel` or `action`: the owner's copy loads `probe/` itself, and an
   `action` would put a button that does nothing into Opera's toolbar.
 

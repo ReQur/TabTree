@@ -53,6 +53,8 @@ probe/                 the extension, loaded unpacked as it is
 scripts/               npm run pack: dist/<browser>/ and zips for the stores, with each browser's manifest;
                        npm run icons: probe/icons/*.png from assets/icon.svg
 assets/icon.svg        the logo's source
+store/                 publishing: listing texts and privacy answers, store images, the screenshot script
+PRIVACY.md             the privacy policy the stores link to; keep it true when data handling changes
 tests/                 scenario tests on fakes (jsdom, a fake Opera or Chrome); helpers in tests/helpers/
 docs/                  see above
 ```

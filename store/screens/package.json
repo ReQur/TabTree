@@ -1,0 +1,13 @@
+{
+  "name": "branchy-store-screens",
+  "private": true,
+  "type": "module",
+  "description": "Chrome Web Store screenshots of Branchy, made from the real extension in Chrome for Testing.",
+  "scripts": {
+    "shots": "node make.js"
+  },
+  "dependencies": {
+    "pngjs": "^7.0.0",
+    "puppeteer": "^25.12.0"
+  }
+}

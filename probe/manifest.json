@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Branchy",
-  "version": "0.1.0",
-  "description": "Tabs as a tree in the sidebar: a tab hangs under the one that opened it, tickets gather their pages, folders nest.",
+  "version": "1.0.0",
+  "description": "Tree style tabs in the sidebar: a tab hangs under the one that opened it, tickets gather their merge requests, folders nest.",
   "permissions": ["tabs", "webNavigation", "storage", "tabGroups", "clipboardWrite", "alarms"],
   "optional_host_permissions": ["https://*/*", "http://*/*"],
   "background": {
