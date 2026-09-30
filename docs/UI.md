@@ -1,4 +1,4 @@
-# TabTree: the panel's UI
+# Branchy: the panel's UI
 
 The panel as built: where it lives, its layout, tokens, parts and their states, and the wallpaper mode. It follows
 the design canvas "TabTree panel redesign" (claude.ai); the places where the build differs from the canvas are listed
@@ -12,9 +12,9 @@ at the end. What each control does is in [FEATURES.md](FEATURES.md); where the c
 - **Size:** the user sets the width by dragging its edge. It works from 260 to 450px (the owner's is ~380px), with
   no horizontal scrolling. It takes the full window height.
 - **Opera's title bar:** Opera draws its own bar above the panel with the extension's name (`name` in
-  `manifest.json`, now "TabTrees Probe"), a reload button and a pin. It isn't ours to style. The icon in Opera's
-  sidebar comes from `probe/icons/`.
-- **In Chrome and Edge:** the browser's side panel, opened by TabTree's toolbar button: in Chrome on the right or,
+  `manifest.json`, now "Branchy"), a reload button and a pin. It isn't ours to style. The icon in Opera's
+  sidebar comes from `probe/icons/` (a white sprout on a leaf-green tile; the source is `assets/icon.svg`).
+- **In Chrome and Edge:** the browser's side panel, opened by Branchy's toolbar button: in Chrome on the right or,
   as the setup guide suggests, on the left; in Edge, the sidebar, which stays on the right (Edge's vertical tabs,
   collapsed, are then on the left). The browser draws the bar above it.
   Chrome's side panel doesn't get as narrow as Opera's sidebar panel. The words follow the browser: **Groups** and
@@ -30,7 +30,7 @@ at the end. What each control does is in [FEATURES.md](FEATURES.md); where the c
 │ [⌕ Search tabs, PROJ-123, mr, jira…   / ] [▭+][∿][≡] │  header: search, New folder, Log, Settings
 │ [T] [M] [P•]                                      │  pinned tiles; • = playing sound
 ├──────────────────────────────────────────────────┤
-│ ┌ Set up TabTree ─────────────────────────────┐   │  setup guide, until dismissed
+│ ┌ Set up Branchy ─────────────────────────────┐   │  setup guide, until dismissed
 │ │ ✓ Pin this panel …                          │   │
 │ └─────────────────────────────────────────────┘   │
 │ ⌄ ▰ Release 2.4                            (9)   │  island folder: glyph, rail ┃ down its rows, tinted count
@@ -79,10 +79,10 @@ for marks only.
 | `--guide`, `--guide-hi` | `#dcdfe4`, `#b3b8c0` | `#32353d`, `#555a65` | indentation guides; drop zone border, switch off |
 | `--hover` | `#eef0f3` | `#25272e` | row and button hover |
 | `--current` | `#e2e5ea` | `#2f323b` | active tab fill, pressed buttons, active pinned tile |
-| `--sel`, `--sel-hover` | `#dde8fd`, `#d1e0fc` | `#22314d`, `#293b5c` | selected rows, drop inside, menu hover, focus ring |
-| `--accent` | `#2f6feb` | `#78a6ff` | active pip, focus border, drop markers, primary button |
-| `--accent-fg` | `#ffffff` | `#0f1a33` | text on the accent |
-| `--accent-text` | `#1f5fd6` | `#8fb4ff` | ticket keys, sound icon |
+| `--sel`, `--sel-hover` | `#e8e2fd`, `#ded5fc` | `#2c2550`, `#352c60` | selected rows, drop inside, menu hover, focus ring |
+| `--accent` | `#6a45e6` | `#a48cff` | active pip, focus border, drop markers, primary button (violet: green is the statuses' "passed", and the logo's) |
+| `--accent-fg` | `#ffffff` | `#1b1238` | text on the accent |
+| `--accent-text` | `#5a37d4` | `#b8a6ff` | ticket keys, sound icon |
 | `--chip`, `--chip-fg`, `--chip-line` | `#eceef2`, `#4a515c`, `#d6d9df` | `#2a2c34`, `#b3b8c1`, `#3a3d46` | badges, counts, key caps |
 | `--warn`, `--warn-bg` | `#8a5a00`, `#fcefd0` | `#e8b949`, `#3a3016` | dup, N dups, the copy-by-hand banner |
 | `--danger`, `--danger-bg`, `--danger-fg` | `#c4312b`, `#fdeceb`, `#fff` | `#f2706a`, `#3d2226`, `#1b1c21` | armed Close, Delete folder, error message |
@@ -122,7 +122,7 @@ for marks only.
   `stSkipped`, `stNotBuilt`, `stMerged`, `stApproved`, `stApprovals` (a person), `stRebase`, `stConflict`,
   `stDiscussions`, `stTodo`, `stProg` (half filled), `stMe`, `stSignedOut` (a key), `stOffline`, `stNotConnected` (a
   plug), `stRetry`, `stUnknown` (dashed, faint), `stClock`.
-- **Status tokens:** `--st-ok`, `--st-fail`, `--st-warn`, `--st-merged`, `--st-run` (ink, not blue: blue is the
+- **Status tokens:** `--st-ok`, `--st-fail`, `--st-warn`, `--st-merged`, `--st-run` (ink, not violet: violet is the
   accent), `--st-idle`, `--st-track` for both themes and the wallpaper mode; the line's `--ln-aur1` / `--ln-aur2`
   (running: two hues of the accent's family, lavender to pink on the wallpaper), `--ln-fail` / `--ln-fail2` (coral to
   red), `--ln-warn`, and `--ln-ga`, the glow's strength (60% dark, 38% light). Fail and warn marks, and in the dark
@@ -300,7 +300,7 @@ A picture of the owner's behind the panel (`body.wp`), set in Settings › Backg
   field, pinned tiles, the selection bar, menus, messages and the setup card are frosted (`backdrop-filter: blur(14px)
   saturate(1.3)`). In the dark theme, rows, the status bar and section labels get a soft text shadow. The status bar
   has a veil of its own instead of its top line.
-- **Accent:** **Blue** keeps the theme's accent, with a translucent `--sel`. **From wallpaper** sets `--accent`,
+- **Accent:** **Violet** keeps the theme's accent, with a translucent `--sel`. **From wallpaper** sets `--accent`,
   `--accent-fg`, `--accent-text`, `--sel` and `--sel-hover` from the picture's most frequent strong color
   (`wallTokens()` in wallpaper.js): with the owner's picture, about `#ee96cc` (dark) and `#b9418a` (light).
 - **Settings › Background:** a segmented **None** | **Image file** (`#wp-none`, `#wp-file`); with a picture: a 96px

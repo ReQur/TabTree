@@ -47,7 +47,7 @@ const flip = id => {
   $(id).dispatchEvent(new p.w.Event('change'));
 };
 
-check(`a first start shows the setup guide above the tree: ${texts('#list .card h4')}`, texts('#list .card h4').join() === 'Set up TabTree' && $('#list').firstElementChild === $('.card'));
+check(`a first start shows the setup guide above the tree: ${texts('#list .card h4')}`, texts('#list .card h4').join() === 'Set up Branchy' && $('#list').firstElementChild === $('.card'));
 check(`three steps: ${texts('.steps li b')}`, texts('.steps li b').join('|') === "Pin this panel|Collapse Opera's tabs|Turn off automatic Tab Islands" && nums() === '1,2,3');
 check('the tree is still there under it', !!p.row('Dashboard A'));
 $('.steps li[data-step="tabs"]').click();
@@ -102,7 +102,7 @@ check('with none left: says so', !$('.chip') && texts('.chips .muted').join() ==
 const option = name => all('.opt').find(o => o.querySelector('b').textContent === name);
 option('Report').querySelector('button').click();
 await wait(50);
-check('Report › Copy copies the report', p.copied.at(-1)?.startsWith('## TabTrees probe'));
+check('Report › Copy copies the report', p.copied.at(-1)?.startsWith('## Branchy report'));
 option('Log').querySelector('button').click();
 await wait(50);
 check('Log › Open opens the log', shown() === 'log' && !!$('.logv .kv') && !$('#report').hidden && $('#view-title').textContent === 'Log');
@@ -122,7 +122,7 @@ $('#report').click();
 await wait(50);
 p.w.navigator.clipboard.writeText = clipboard;
 check(`when the clipboard refuses, the report is shown selected: «${$('.banner')?.textContent}»`,
-  $('.banner')?.textContent === 'The clipboard refused. The report is selected: press Ctrl+C, then Esc.' && $('textarea.report')?.value.startsWith('## TabTrees probe'));
+  $('.banner')?.textContent === 'The clipboard refused. The report is selected: press Ctrl+C, then Esc.' && $('textarea.report')?.value.startsWith('## Branchy report'));
 view('settings');
 p.key('Escape');
 check('Esc goes back to the tree', shown() === 'tree' && !!p.row('Dashboard A') && !$('#hdr').hidden && $('#vbar').hidden);

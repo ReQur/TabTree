@@ -63,9 +63,12 @@ $('#wp-frame').dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'ArrowLeft'
 await wait(20);
 check('← and → move it too', store.wallpaper.x === 95 && $('#wp-frame').getAttribute('aria-valuenow') === '95');
 
-$('.acc[data-accent="blue"]').click();
+$('.acc[data-accent="violet"]').click();
 await wait(20);
-check('the Blue accent drops the picture\'s one', store.wallpaper.accent === 'blue' && prop(body, '--accent') === '' && prop(body, '--scrim') !== '' && $('.acc.on')?.dataset.accent === 'blue');
+check('the Violet accent drops the picture\'s one', store.wallpaper.accent === 'violet' && prop(body, '--accent') === '' && prop(body, '--scrim') !== '' && $('.acc.on')?.dataset.accent === 'violet');
+await globalThis.chrome.storage.local.set({ wallpaper: { ...store.wallpaper, accent: 'blue' } });
+await wait(50);
+check('a picture kept from before, with the blue accent, shows Violet chosen', $('.acc.on')?.dataset.accent === 'violet' && prop(body, '--accent') === '');
 
 await globalThis.chrome.storage.local.set({ wallpaper: { ...store.wallpaper, dim: 20 } });
 await wait(50);

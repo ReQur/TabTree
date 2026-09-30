@@ -1,4 +1,4 @@
-# TabTree: how it works
+# Branchy: how it works
 
 What the extension does from the user's side is in [FEATURES.md](FEATURES.md). This file is for changing it.
 
@@ -46,7 +46,9 @@ Opera, Chrome or Edge: tabs, islands (tab groups), Opera's workspaces
 - `integrations.js`: statuses from Jira, GitLab and Jenkins. `detectSites(tabs, limit)` finds the sites behind the
   tabs with their pages; `probeSite(site)` is the Test; `pollSites()` is one round of the watch; `watchedOf(tab)` and
   `statusLines()` read what the watch keeps about a tab. Pure apart from `fetch`, which the tests pass in.
-- `icons/`: generated PNGs (16, 32, 48, 128), the extension's own icon.
+- `icons/`: the extension's own icon as PNGs (16, 32, 48, 128), made from `assets/icon.svg` (a sprout on a leaf-green
+  tile) by `npm run icons` (`scripts/icons.js`, with `@resvg/resvg-js`). The 128 px one keeps the stores' 16 px
+  margin around the tile; the small ones fill nearly all of their square.
 
 No build step and no runtime dependencies: `probe/` is loaded as it is. `package.json` is for the tests (jsdom) and
 for `npm run pack`, which copies `probe/` and writes each browser's manifest (see Packages for the stores).
@@ -61,7 +63,7 @@ for `npm run pack`, which copies `probe/` and writes each browser's manifest (se
 | `folders` | `{ [id]: { name, color, parent: id \| null, created, key?, auto? } }` | folder ids are stable across restarts (base36 time + random). `key` = the ticket a family folder was made for; `auto` = made automatically (dropped on rename). |
 | `ranks` | `{ ["t:<tabId>" \| "f:<folderId>"]: number }` | order among siblings, written for a whole sibling list at a time by drops and new folders. Unranked siblings go after ranked ones. |
 | `settings` | `{ textSize?: 10…15, autoFolders?: bool, mirrorIslands?: bool, reuseTabs?: bool, statuses?: bool, dimFinished?: bool, markChanged?: bool, onboarded?: bool, setup?: { pin?, tabs?, islands?, left?: bool } }` | the Settings switches (missing = on), written by the panel, and by `importTree`. `onboarded` = the setup guide was dismissed with Got it; `setup` = its steps ticked by hand, by the ids in browser.js (`pin`, `tabs`, `islands` in Opera; `pin`, `left` in Chrome; `pin`, `tabs` in Edge). `mirrorIslands` stands for tab groups too. |
-| `wallpaper` | `{ source: "file" \| "none", name, dataUrl, width, height, w, h, bytes, tones: { vivid, dark, mean }, x, dim, blur, accent: "blue" \| "wallpaper" }` | the picture behind the panel with its settings (Settings › Background), written by the panel, and by `importTree`. `width`/`height` are the file's size, `w`/`h` and `bytes` the stored JPEG's; `tones` are `[r, g, b]` colors from `tonesOf()`; `x` (0–100), `dim` (0–100), `blur` (px). `source: "none"` keeps the picture but doesn't draw it. A key of its own, so that a slider's change reloads no tree (see The wallpaper). |
+| `wallpaper` | `{ source: "file" \| "none", name, dataUrl, width, height, w, h, bytes, tones: { vivid, dark, mean }, x, dim, blur, accent: "violet" \| "wallpaper" }` | the picture behind the panel with its settings (Settings › Background), written by the panel, and by `importTree`. `width`/`height` are the file's size, `w`/`h` and `bytes` the stored JPEG's; `tones` are `[r, g, b]` colors from `tonesOf()`; `x` (0–100), `dim` (0–100), `blur` (px); an `accent` of `"blue"`, kept from before the accent was violet, counts as `"violet"`. `source: "none"` keeps the picture but doesn't draw it. A key of its own, so that a slider's change reloads no tree (see The wallpaper). |
 | `declined` | `{ [ticketKey]: true }` | tickets never to get an automatic folder again. Shown in Settings › Never for; `allowAutoFolder` removes one. |
 | `apiProbe` | `{ [site base]: { kind, origin, t, results: [{ name, ok, text }] } }` | the background's last answers of the statuses probe, for Settings and the report. Written by the background. |
 | `status` | `{ sites: { [base]: { kind, ok, error? } }, tickets, mrs, pipelines, jobs, builds, projects }` | what the watch keeps (see The statuses watch). Written by the background, only when something changed. |
@@ -97,7 +99,7 @@ A tab row that is folded has a key with a tab id, and tab ids change on restart,
 | `closeItems` | `tabIds`, `folderIds` | closes the tabs and deletes the folders, without declining. |
 | `allowAutoFolder` | `key` | removes the key from `declined` and schedules a tidy pass, so a family that qualifies gets its folder right away. |
 | `openTab` | `url` (http or https), `parent`: a tab id, or -1 for the top level | opens the page in a new tab and puts it under `parent`: the URL is kept in `placing` until `tabs.onCreated` reports the tab, which then takes that parent instead of its opener, and the parent is set again once `tabs.create` returns. The details card's **Open pipeline** and **Sign in** use it. |
-| `importTree` | `backup`: a file's contents, as parsed | Settings › Import (see Backups). Answers `{ folders, matched, saved }`: folders taken in, and how many of the file's tabs were found open. `not a TabTree backup` when `readBackup()` refuses it. |
+| `importTree` | `backup`: a file's contents, as parsed | Settings › Import (see Backups). Answers `{ folders, matched, saved }`: folders taken in, and how many of the file's tabs were found open. `not a Branchy backup` when `readBackup()` refuses it. |
 
 A ref is `"t:<tabId>"` or `"f:<folderId>"` (`nodeRef()` in tree.js).
 
@@ -277,7 +279,7 @@ Settings › Backup. The file is JSON: `{ tabtree: 1, savedAt, folders, ranks, d
 ## Packages for the stores (`scripts/`)
 
 - `npm run pack` (`scripts/pack.js`) copies `probe/` to `dist/<browser>/` for `opera`, `chrome` and `edge`, writes
-  that browser's manifest there, and zips it into `dist/tabtree-<browser>-<version>.zip` with the `zip` command.
+  that browser's manifest there, and zips it into `dist/branchy-<browser>-<version>.zip` with the `zip` command.
   `dist/` is not in git. `dist/chrome/` and `dist/edge/` can be loaded unpacked to try a build.
 - `scripts/manifests.js`: `manifestFor(base, target)`. Opera's is `probe/manifest.json` as it is. Chrome's and Edge's
   drop `sidebar_action`, add the `sidePanel` permission, `side_panel.default_path` (`panel.html`), an `action` (the

@@ -1,12 +1,14 @@
-# TabTree
+# Branchy
 
-An Opera extension (Manifest V3, no build step) that shows tabs as a tree in Opera's sidebar, and in Chrome's and
+A browser extension (Manifest V3, no build step) that shows tabs as a tree in Opera's sidebar, and in Chrome's and
 Edge's side panel:
 - a tab hangs under the tab that opened it;
 - tickets (`PROJ-123`) gather their merge requests and pipelines, and tickets opened from tickets nest;
 - folders nest, and top-level folders are mirrored as Opera Tab Islands (tab groups in Chrome and Edge).
 
-It is the repo owner's personal project (GitHub: ReQur), used daily in Opera on Windows.
+It is the repo owner's personal project (GitHub: ReQur), used daily in Opera on Windows. Its first name was TabTree:
+the repo (`ReQur/TabTree`), its folder and the backup file's `tabtree` key keep it; everything the extension shows says
+Branchy.
 
 Read before changing anything:
 - [docs/FEATURES.md](docs/FEATURES.md): every behavior, from the user's side. Keep it true when behavior changes.
@@ -48,7 +50,9 @@ probe/                 the extension, loaded unpacked as it is
   integrations.js      statuses: Jira/GitLab/Jenkins sites in tabs, the probe, the watch's rounds (reads, session)
   statuses.js          what the panel shows for a status: marks, lines, summaries, the status bar, the card (pure)
   icons/               PNG icons of the extension
-scripts/               npm run pack: dist/<browser>/ and zips for the stores, with each browser's manifest
+scripts/               npm run pack: dist/<browser>/ and zips for the stores, with each browser's manifest;
+                       npm run icons: probe/icons/*.png from assets/icon.svg
+assets/icon.svg        the logo's source
 tests/                 scenario tests on fakes (jsdom, a fake Opera or Chrome); helpers in tests/helpers/
 docs/                  see above
 ```

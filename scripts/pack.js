@@ -1,5 +1,5 @@
 // `npm run pack`: what goes to the stores, from probe/ as it is. For each browser, dist/<browser>/ (to load unpacked
-// and try) and dist/tabtree-<browser>-<version>.zip (to upload). Only the manifest differs (manifests.js). Needs
+// and try) and dist/branchy-<browser>-<version>.zip (to upload). Only the manifest differs (manifests.js). Needs
 // the `zip` command.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -15,7 +15,7 @@ const base = JSON.parse(fs.readFileSync(path.join(source, 'manifest.json'), 'utf
 fs.mkdirSync(dist, { recursive: true });
 for (const target of TARGETS) {
   const dir = path.join(dist, target);
-  const zip = path.join(dist, `tabtree-${target}-${base.version}.zip`);
+  const zip = path.join(dist, `branchy-${target}-${base.version}.zip`);
   fs.rmSync(dir, { recursive: true, force: true });
   fs.rmSync(zip, { force: true });
   fs.cpSync(source, dir, { recursive: true });

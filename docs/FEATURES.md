@@ -1,11 +1,11 @@
-# TabTree: what it does
+# Branchy: what it does
 
 Everything the extension does today, from the user's side. How it works inside is in
 [ARCHITECTURE.md](ARCHITECTURE.md); what the panel looks like is in [UI.md](UI.md).
 
 ## Setup
 
-TabTree runs in Opera, Chrome and Edge. Everything below works the same in the three, except where Opera is named:
+Branchy runs in Opera, Chrome and Edge. Everything below works the same in the three, except where Opera is named:
 Chrome and Edge have **tab groups** where Opera has islands, and no workspaces.
 
 **Opera**, loaded unpacked:
@@ -20,15 +20,15 @@ Chrome and Edge have **tab groups** where Opera has islands, and no workspaces.
 
 Until it is dismissed, the **setup guide** above the tree lists steps 2–4; see Setup guide below.
 
-**Chrome and Edge**, until TabTree is in their stores: `npm run pack` makes `dist/chrome/` and `dist/edge/` (and the
+**Chrome and Edge**, until Branchy is in their stores: `npm run pack` makes `dist/chrome/` and `dist/edge/` (and the
 zip files for the stores, see ARCHITECTURE.md). In `chrome://extensions` or `edge://extensions`: developer mode →
 **Load unpacked** → that folder. Then:
 
-1. Pin TabTree to the toolbar: the Extensions button (a puzzle piece) lists it, with a pin in Chrome and an eye in
+1. Pin Branchy to the toolbar: the Extensions button (a puzzle piece) lists it, with a pin in Chrome and an eye in
    Edge. Its button opens the panel: Chrome's side panel, Edge's sidebar.
 2. In Chrome, Settings › Appearance › Side panel: **Show on left**. Edge keeps its sidebar on the right; there, turn
    on Edge's vertical tabs (right-click a tab) and collapse them to a column of icons, as in Opera: the tab strip
-   leaves the top, the icons stay on the left and TabTree is on the right.
+   leaves the top, the icons stay on the left and Branchy is on the right.
 
 The setup guide lists these steps too.
 
@@ -311,9 +311,9 @@ survive.
 ## Backup
 
 **Settings › Backup** saves the tree to a file and takes it back in: to move to another browser or profile, or to
-another copy of TabTree (the store's one), which starts with empty storage.
+another copy of Branchy (the store's one), which starts with empty storage.
 
-- **Export** saves `tabtree-2026-09-30.json`: the folders, where the open tabs sit (by URL and place, the way a
+- **Export** saves `branchy-2026-09-30.json`: the folders, where the open tabs sit (by URL and place, the way a
   restart keeps them), the order set by hand, the tickets under Never for, the switches and the background picture.
   The setup guide's ticks stay behind, since its steps differ from browser to browser. The message reads
   `Exported 4 folders and 52 tabs`.
@@ -370,8 +370,8 @@ switches are on by default.
   - **Dim** (70% at first): how strongly a veil covers the picture, so that text stays readable. The veil is the
     picture's darkest tone made very dark, or near white in the light theme.
   - **Blur** (0 to 24 pixels, 0 at first).
-  - **Accent**: **Blue**, or **From wallpaper**: the picture's most frequent strong color, made readable on the veil.
-    A picture without a strong color keeps blue.
+  - **Accent**: **Violet** (the panel's own), or **From wallpaper**: the picture's most frequent strong color, made
+    readable on the veil. A picture without a strong color keeps violet.
   - Every panel (one per window) shows the same picture, and follows a change made in another one.
 - **Text size**: 10 to 15 pixels, 12 at first. The whole panel is drawn at that size, as page zoom would: text, icons,
   rows, bars and menus. A smaller size fits more into a narrow panel.
@@ -460,7 +460,7 @@ pinned), on Esc, a click elsewhere, or scrolling. It answers "what am I waiting 
   - any page of a host named after its tool (`gitlab.example.com`, `jira.example.com`, `jenkins.example.com`).
   Nothing about them is kept in the extension's code. A kind with no open page gets a line saying what to open.
 - Each site shows how it stands: `Connected · checked 12 s ago · 5 tickets`; `Signed out · last known 14:02` with
-  **Sign in**; `Offline · VPN? last OK 13:40` with **Retry**; `Not connected: TabTree may not read this site` with
+  **Sign in**; `Offline · VPN? last OK 13:40` with **Retry**; `Not connected: Branchy may not read this site` with
   **Connect**, which asks the browser to let the extension read that site (the browser asks you).
 - **⋯** on a connected site: **Test the connection** and **Disconnect**.
 - **Dim finished rows** and **Mark what changed while you were away**, both on by default.
@@ -492,14 +492,14 @@ Until it is dismissed, a card above the tree lists what to set up in the browser
 once.`). In Opera:
 1. **Pin this panel**: the pin in the panel's title bar keeps it next to the page.
 2. **Collapse Opera's tabs**: Settings › Browser › Tabs: vertical tabs, collapsed to a column of icons.
-3. **Turn off automatic Tab Islands**: TabTree makes islands from your folders.
+3. **Turn off automatic Tab Islands**: Branchy makes islands from your folders.
 
 In Chrome:
-1. **Pin TabTree**: Extensions (the puzzle piece) › the pin next to TabTree. Its button opens this panel.
+1. **Pin Branchy**: Extensions (the puzzle piece) › the pin next to Branchy. Its button opens this panel.
 2. **Put the side panel on the left**: Chrome's Settings › Appearance › Side panel: Show on left.
 
 In Edge:
-1. **Pin TabTree**: Extensions (the puzzle piece) › the eye next to TabTree. Its button opens this panel in the
+1. **Pin Branchy**: Extensions (the puzzle piece) › the eye next to Branchy. Its button opens this panel in the
    sidebar.
 2. **Collapse Edge's tabs**: right-click a tab › Turn on vertical tabs, then collapse them to a column of icons.
 

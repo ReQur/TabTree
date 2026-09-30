@@ -213,7 +213,7 @@ check(`the section and its switches: ${all('.settings .sub').map(e => e.textCont
 check(`a site that answers: «${state('jira.example.com')}» ${actions('jira.example.com')}`, /^Connected · checked 1\d s ago · 2 tickets$/.test(state('jira.example.com')) && actions('jira.example.com').join() === 'More for jira.example.com');
 check(`a site that signed out: «${state('gitlab.example.com')}» ${actions('gitlab.example.com')}`,
   /^Signed out · last known \d\d:\d\d:\d\d$/.test(state('gitlab.example.com')) && actions('gitlab.example.com').join() === 'Sign in,More for gitlab.example.com');
-check(`a site not connected: «${state('ci.example.com')}» ${actions('ci.example.com')}`, state('ci.example.com') === 'Not connected: TabTree may not read this site' && actions('ci.example.com').join() === 'Connect');
+check(`a site not connected: «${state('ci.example.com')}» ${actions('ci.example.com')}`, state('ci.example.com') === 'Not connected: Branchy may not read this site' && actions('ci.example.com').join() === 'Connect');
 [...site('ci.example.com').querySelectorAll('button')].find(b => b.textContent === 'Connect').click();
 await wait(300);
 check(`Connect asks Opera for the site: «${state('ci.example.com')}»`, permissions.asked.join() === 'https://ci.example.com/*' && state('ci.example.com') === 'Connected · checking…');
@@ -234,7 +234,7 @@ check('Test asks from the background and from the panel, and shows both', p.sent
 site('jira.example.com').querySelector('button[aria-label^="More"]').click();
 p.pick('Disconnect');
 await wait(300);
-check('Disconnect takes the access back', permissions.removed.join() === `${J}/*` && state('jira.example.com') === 'Not connected: TabTree may not read this site');
+check('Disconnect takes the access back', permissions.removed.join() === `${J}/*` && state('jira.example.com') === 'Not connected: Branchy may not read this site');
 
 // ---- the report ----
 $('#report').click();

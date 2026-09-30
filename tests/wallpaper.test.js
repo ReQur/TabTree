@@ -58,7 +58,7 @@ check(`a thin scrim over a bright picture: the accent's text goes lighter until 
   contrast(rgbOf(thin['--accent-text']), groundOf(dusk, thin)) >= 4.5 && lightness(rgbOf(thin['--accent-text'])) > 0.83);
 
 const grey = tonesOf(picture([[[40, 40, 40], 0.5], [[200, 200, 200], 0.5]]));
-check('a grey picture has no color of its own, and keeps the blue accent',
+check('a grey picture has no color of its own, and keeps the violet accent',
   grey.vivid === null && !('--accent' in wallTokens(grey, { dark: true, dim: 0.7, accent: 'wallpaper' })));
-check('with the Blue accent only the scrim changes', Object.keys(wallTokens(sky, { dark: true, dim: 0.7, accent: 'blue' })).join() === '--scrim,--dim,--dim-top');
+check('with the Violet accent only the scrim changes', Object.keys(wallTokens(sky, { dark: true, dim: 0.7, accent: 'violet' })).join() === '--scrim,--dim,--dim-top');
 done();

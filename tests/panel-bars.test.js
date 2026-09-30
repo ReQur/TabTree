@@ -77,7 +77,7 @@ check('after 4 seconds Close is plain again', !armed() && selected().length === 
 check('the error toast is still there', toast()?.classList.contains('err'));
 toast().querySelector('button').click();
 await wait(50);
-check(`its Copy report copies the report and says so: «${toast()?.textContent}»`, p.copied.at(-1)?.startsWith('## TabTrees probe') && toast()?.textContent === 'Report copied' && !toast().classList.contains('err'));
+check(`its Copy report copies the report and says so: «${toast()?.textContent}»`, p.copied.at(-1)?.startsWith('## Branchy report') && toast()?.textContent === 'Report copied' && !toast().classList.contains('err'));
 p.key('Escape');
 check('and Esc then clears the selection', selected().length === 0 && $('#selbar').hidden);
 

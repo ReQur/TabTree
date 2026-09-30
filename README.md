@@ -1,7 +1,7 @@
-# TabTree
+# Branchy
 
 An extension for Opera, Chrome and Edge that shows your tabs as a tree in the sidebar, the way an IDE shows files,
-instead of a flat tab strip.
+instead of a flat tab strip. (Its first name was TabTree, which the repository keeps.)
 
 ## What it does
 
@@ -37,7 +37,7 @@ Opera:
    automatic Tab Islands so they don't compete with the extension's folders.
 
 Chrome and Edge: run `npm run pack`, then load `dist/chrome/` or `dist/edge/` unpacked from `chrome://extensions` or
-`edge://extensions`, and pin TabTree to the toolbar: its button opens the side panel. In Chrome, Settings ›
+`edge://extensions`, and pin Branchy to the toolbar: its button opens the side panel. In Chrome, Settings ›
 Appearance › Side panel › Show on left puts the panel on the left.
 
 A setup guide above the tree lists these steps until you dismiss it. **Settings** holds the switches and the
@@ -53,7 +53,7 @@ npm install
 npm test
 ```
 
-`npm run pack` writes `dist/<browser>/` and `dist/tabtree-<browser>-<version>.zip` for Opera, Chrome and Edge: the
+`npm run pack` writes `dist/<browser>/` and `dist/branchy-<browser>-<version>.zip` for Opera, Chrome and Edge: the
 same files, each with its browser's manifest.
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how it works, stored data, the Opera facts it relies on.

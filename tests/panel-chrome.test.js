@@ -27,7 +27,7 @@ const texts = sel => all(sel).map(e => e.textContent);
 const count = name => p.row(name).querySelector('.count').title;
 
 check(`the setup guide: «${$('.card p')?.textContent}»`, $('.card p')?.textContent === 'Two things in Chrome, once. Click a step to mark it done.');
-check(`Chrome's steps: ${texts('.steps li b')}`, texts('.steps li b').join('|') === 'Pin TabTree|Put the side panel on the left');
+check(`Chrome's steps: ${texts('.steps li b')}`, texts('.steps li b').join('|') === 'Pin Branchy|Put the side panel on the left');
 check(`the status bar: «${$('#islands').textContent}», «${$('#islands').title}»`,
   $('#islands').textContent === 'Groups' && $('#islands').title === "1 folder is a tab group in Chrome's tab strip");
 check(`folders: «${count('Release')}», «${count('Solo')}»`,
@@ -41,7 +41,7 @@ const option = name => all('.opt').find(o => o.querySelector('b').textContent ==
 check('the mirror is called Tab groups', option('Tab groups')?.querySelector('p').textContent.startsWith("Every top-level folder with two or more tabs is a tab group in Chrome's tab strip."));
 const groups = all('.islands .il').map(li => `${li.querySelector('.grow').textContent}: ${li.querySelector('.m').textContent}`);
 check(`each top-level folder's group: ${groups.join('; ')}`, groups.join('; ') === 'Release: 2 tabs · tab group; Solo: 1 tab · no tab group, needs 2');
-check('the setup guide, in short', option('Setup guide').querySelector('p').textContent === 'Pin TabTree to the toolbar, put the side panel on the left.');
+check('the setup guide, in short', option('Setup guide').querySelector('p').textContent === 'Pin Branchy to the toolbar, put the side panel on the left.');
 option('Report').querySelector('button').click();
 await wait(50);
 check(`the report names Chrome: «${p.copied.at(-1)?.split('\n')[1]}»`, p.copied.at(-1)?.split('\n')[1] === '- Chrome 151.0.0.0, Chromium 151.0.0.0, ' + p.w.navigator.platform);

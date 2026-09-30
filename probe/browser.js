@@ -15,7 +15,7 @@ const OPERA = {
   setup: [
     ['pin', 'Pin this panel', "The pin in the panel's title bar keeps it next to the page."],
     ['tabs', "Collapse Opera's tabs", 'Settings › Browser › Tabs: vertical tabs, collapsed to a column of icons.'],
-    ['islands', 'Turn off automatic Tab Islands', 'TabTree makes islands from your folders.'],
+    ['islands', 'Turn off automatic Tab Islands', 'Branchy makes islands from your folders.'],
   ],
   setupLine: "Pin the panel, collapse Opera's tab strip, turn off Opera's own Tab Islands.",
 };
@@ -32,10 +32,10 @@ const CHROME = {
   needsTwo: 'needs 2',
   workspaces: false,
   setup: [
-    ['pin', 'Pin TabTree', 'Extensions (the puzzle piece) › the pin next to TabTree. Its button opens this panel.'],
+    ['pin', 'Pin Branchy', 'Extensions (the puzzle piece) › the pin next to Branchy. Its button opens this panel.'],
     ['left', 'Put the side panel on the left', "Chrome's Settings › Appearance › Side panel: Show on left."],
   ],
-  setupLine: 'Pin TabTree to the toolbar, put the side panel on the left.',
+  setupLine: 'Pin Branchy to the toolbar, put the side panel on the left.',
 };
 
 const EDGE = {
@@ -44,10 +44,10 @@ const EDGE = {
   name: 'Edge',
   version: /Edg\/([\d.]+)/,
   setup: [
-    ['pin', 'Pin TabTree', 'Extensions (the puzzle piece) › the eye next to TabTree. Its button opens this panel in the sidebar.'],
+    ['pin', 'Pin Branchy', 'Extensions (the puzzle piece) › the eye next to Branchy. Its button opens this panel in the sidebar.'],
     ['tabs', "Collapse Edge's tabs", 'Right-click a tab › Turn on vertical tabs, then collapse them to a column of icons.'],
   ],
-  setupLine: "Pin TabTree to the toolbar, collapse Edge's tabs to a column of icons.",
+  setupLine: "Pin Branchy to the toolbar, collapse Edge's tabs to a column of icons.",
 };
 
 // Opera's pages have the `opr` object, and Opera and Edge name themselves in the user agent ("OPR/", "Edg/").

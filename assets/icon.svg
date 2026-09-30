@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Branchy: a sprout on a leaf-green tile. The tile fills 96 of 128 px, as the stores ask. -->
+  <defs>
+    <linearGradient id="leaf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4FDB8A"/>
+      <stop offset="1" stop-color="#15945A"/>
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="96" height="96" rx="24" fill="url(#leaf)"/>
+  <path d="M64 96 V56" stroke="#fff" stroke-width="8" stroke-linecap="round"/>
+  <path d="M64 78 C50 78 36 70 34 52 C50 52 62 62 64 78 Z" fill="#fff"/>
+  <path d="M64 62 C64 44 78 30 98 30 C98 50 84 62 64 62 Z" fill="#fff"/>
+</svg>

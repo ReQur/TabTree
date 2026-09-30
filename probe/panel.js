@@ -1315,7 +1315,7 @@ function guideCard() {
   const card = el('section', 'card guide');
   card.setAttribute('aria-label', 'Setup');
   const things = ['One thing', 'Two things', 'Three things'][browser.setup.length - 1];
-  card.append(el('h4', null, 'Set up TabTree'), el('p', null, `${things} in ${browser.name}, once. Click a step to mark it done.`));
+  card.append(el('h4', null, 'Set up Branchy'), el('p', null, `${things} in ${browser.name}, once. Click a step to mark it done.`));
   const done = settings.setup ?? {};
   const steps = el('ol', 'steps');
   browser.setup.forEach(([id, name, text], i) => {
@@ -1517,7 +1517,7 @@ function siteState(site) {
     line.append(text);
     return line;
   };
-  if (!granted.has(originPattern(site))) return small(null, 'stNotConnected', 'Not connected: TabTree may not read this site');
+  if (!granted.has(originPattern(site))) return small(null, 'stNotConnected', 'Not connected: Branchy may not read this site');
   if (settings.statuses === false) return small(null, null, 'Connected · statuses are off');
   const health = status.sites?.[site.base];
   const checked = watchMemo.checked?.[site.base];
@@ -1528,7 +1528,7 @@ function siteState(site) {
 }
 
 function siteActions(site) {
-  if (!granted.has(originPattern(site))) return [button('btn sm', 'Connect', `Let TabTree read ${site.origin}`, () => connectSite(site))];
+  if (!granted.has(originPattern(site))) return [button('btn sm', 'Connect', `Let Branchy read ${site.origin}`, () => connectSite(site))];
   const host = hostOf(site.base);
   const health = status.sites?.[site.base];
   const acts = [];
@@ -1544,7 +1544,7 @@ function siteActions(site) {
         run: () => testSite(site),
       },
       '-',
-      { label: 'Disconnect', icon: 'close', hint: 'TabTree stops reading this site', danger: true, run: () => disconnectSite(site) },
+      { label: 'Disconnect', icon: 'close', hint: 'Branchy stops reading this site', danger: true, run: () => disconnectSite(site) },
     ], { x: r.right ?? 0, y: (r.bottom ?? 0) + 2, above: (r.top ?? 0) - 2, alignRight: true });
   });
   more.setAttribute('aria-haspopup', 'menu');
@@ -2078,7 +2078,7 @@ async function buildReport() {
   const yes = v => (v ? 'yes' : 'no');
   const c = d.count;
   const lines = [
-    '## TabTrees probe',
+    '## Branchy report',
     `- ${browser.name} ${d.version}, Chromium ${d.chromium}, ${d.platform}`,
     `- opr: ${apiNames(globalThis.opr)}`,
     `- opr.sidebarAction: ${apiNames(globalThis.opr?.sidebarAction)}`,
@@ -2280,7 +2280,7 @@ async function exportBackup() {
   const backup = backupOf({ tabs: all, ...stored });
   const link = el('a');
   link.href = URL.createObjectURL(new Blob([JSON.stringify(backup)], { type: 'application/json' }));
-  link.download = `tabtree-${new Date().toISOString().slice(0, 10)}.json`;
+  link.download = `branchy-${new Date().toISOString().slice(0, 10)}.json`;
   link.click();
   setTimeout(() => URL.revokeObjectURL(link.href), 60_000);
   toast(`Exported ${plural(Object.keys(backup.folders).length, 'folder')} and ${plural(backup.tabs.length, 'tab')}`);
@@ -2291,7 +2291,7 @@ async function importBackup(file) {
   try {
     backup = JSON.parse(await file.text());
   } catch {
-    return toast(`${file.name} isn't a TabTree backup`, { error: true });
+    return toast(`${file.name} isn't a Branchy backup`, { error: true });
   }
   const res = await send({ type: 'importTree', backup });
   if (res?.ok) toast(`Imported ${plural(res.folders, 'folder')} · ${res.matched} of ${res.saved} tabs back in place`);
@@ -2528,9 +2528,10 @@ function accentChoice(w) {
   list.setAttribute('aria-label', 'Accent color');
   const dark = !!darkTheme?.matches;
   const own = wallTokens(w.tones, { dark, dim: w.dim / 100, accent: 'wallpaper' })['--accent'];
-  for (const [id, text, color] of [['blue', 'Blue', dark ? '#78a6ff' : '#2f6feb'], ['wallpaper', 'From wallpaper', own]]) {
-    const on = w.accent === id;
-    const b = button(on ? 'acc on' : 'acc', null, own || id === 'blue' ? `Accent: ${text}` : 'The picture has no color strong enough', () => {
+  // Anything but 'wallpaper' is the panel's own accent: pictures kept from before it was violet say 'blue'.
+  for (const [id, text, color] of [['violet', 'Violet', dark ? '#a48cff' : '#6a45e6'], ['wallpaper', 'From wallpaper', own]]) {
+    const on = (w.accent === 'wallpaper') === (id === 'wallpaper');
+    const b = button(on ? 'acc on' : 'acc', null, own || id === 'violet' ? `Accent: ${text}` : 'The picture has no color strong enough', () => {
       saveWallpaper({ ...wallpaper, accent: id });
       render();
     });
@@ -2605,7 +2606,7 @@ function wallpaperLine() {
   if (!w?.dataUrl) return 'none';
   const own = wallTokens(w.tones, { dark: !!darkTheme?.matches, dim: w.dim / 100, accent: w.accent })['--accent'];
   const source = w.source === 'file' ? 'image' : 'none, an image is kept:';
-  return `${source} ${w.width}×${w.height} → ${w.w}×${w.h}, ${Math.round(w.bytes / 1024)} KB, x ${w.x}, dim ${w.dim}, blur ${w.blur}, accent ${own ?? 'blue'}`;
+  return `${source} ${w.width}×${w.height} → ${w.w}×${w.h}, ${Math.round(w.bytes / 1024)} KB, x ${w.x}, dim ${w.dim}, blur ${w.blur}, accent ${own ?? 'violet'}`;
 }
 
 // ---- wiring ----

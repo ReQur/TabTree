@@ -16,6 +16,7 @@ const pick = (o, keep) => Object.fromEntries(Object.entries(isObject(o) ? o : {}
 // What Export writes. The setup guide's ticks stay behind: its steps differ from browser to browser.
 export function backupOf({ tabs, parents = {}, ranks = {}, folders = {}, settings = {}, declined = {}, wallpaper = null }, savedAt = Date.now()) {
   return {
+    // The key keeps the project's first name, so that files saved before the rename still read.
     tabtree: BACKUP_FORMAT,
     savedAt,
     folders,
@@ -30,7 +31,7 @@ export function backupOf({ tabs, parents = {}, ranks = {}, folders = {}, setting
 // What Import takes from a file. The file may come from anywhere, so every piece is checked, and anything of another
 // shape is left out.
 export function readBackup(data) {
-  if (!isObject(data) || data.tabtree !== BACKUP_FORMAT || !Array.isArray(data.tabs)) throw new Error('not a TabTree backup');
+  if (!isObject(data) || data.tabtree !== BACKUP_FORMAT || !Array.isArray(data.tabs)) throw new Error('not a Branchy backup');
   const folders = readFolders(data.folders);
   const isFolder = p => typeof p === 'string' && p.startsWith('f:') && p.slice(2) in folders;
   const n = data.tabs.length;
@@ -74,5 +75,5 @@ function readFolders(given) {
 function readWallpaper(w) {
   if (!isObject(w) || typeof w.dataUrl !== 'string' || !w.dataUrl.startsWith('data:image/') || !isObject(w.tones)) return null;
   if (!WALLPAPER_NUMBERS.every(k => Number.isFinite(w[k]))) return null;
-  return { ...w, name: String(w.name ?? 'picture'), source: w.source === 'none' ? 'none' : 'file', accent: w.accent === 'blue' ? 'blue' : 'wallpaper' };
+  return { ...w, name: String(w.name ?? 'picture'), source: w.source === 'none' ? 'none' : 'file', accent: ['violet', 'blue'].includes(w.accent) ? 'violet' : 'wallpaper' };
 }

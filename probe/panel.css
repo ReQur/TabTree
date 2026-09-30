@@ -1,4 +1,4 @@
-/* TabTree panel. Tokens for the light theme on :root, the dark theme under prefers-color-scheme; body.wp is the
+/* Branchy panel. Tokens for the light theme on :root, the dark theme under prefers-color-scheme; body.wp is the
    wallpaper mode. A row's depth is its --d, set by panel.js. */
 
 :root {
@@ -14,8 +14,8 @@
   --fg: #1c2026; --fg-2: #454c57; --muted: #656c77; --faint: #8f959e;
   --line: #e2e4e8; --guide: #dcdfe4; --guide-hi: #b3b8c0;
   --hover: #eef0f3; --current: #e2e5ea;
-  --accent: #2f6feb; --accent-fg: #ffffff; --accent-text: #1f5fd6;
-  --sel: #dde8fd; --sel-hover: #d1e0fc;
+  --accent: #6a45e6; --accent-fg: #ffffff; --accent-text: #5a37d4;
+  --sel: #e8e2fd; --sel-hover: #ded5fc;
   --chip: #eceef2; --chip-fg: #4a515c; --chip-line: #d6d9df;
   --warn: #8a5a00; --warn-bg: #fcefd0;
   --danger: #c4312b; --danger-fg: #ffffff; --danger-bg: #fdeceb;
@@ -32,8 +32,8 @@
     --fg: #e4e6eb; --fg-2: #b9bec7; --muted: #8f949e; --faint: #6b707a;
     --line: #2e3037; --guide: #32353d; --guide-hi: #555a65;
     --hover: #25272e; --current: #2f323b;
-    --accent: #78a6ff; --accent-fg: #0f1a33; --accent-text: #8fb4ff;
-    --sel: #22314d; --sel-hover: #293b5c;
+    --accent: #a48cff; --accent-fg: #1b1238; --accent-text: #b8a6ff;
+    --sel: #2c2550; --sel-hover: #352c60;
     --chip: #2a2c34; --chip-fg: #b3b8c1; --chip-line: #3a3d46;
     --warn: #e8b949; --warn-bg: #3a3016;
     --danger: #f2706a; --danger-fg: #1b1c21; --danger-bg: #3d2226;
@@ -422,7 +422,7 @@ body.wp {
   --hover: rgba(255, 255, 255, .5); --current: rgba(255, 255, 255, .8);
   --sunken: rgba(255, 255, 255, .55); --raised: rgba(255, 255, 255, .86);
   --chip: rgba(255, 255, 255, .62); --chip-fg: #3f3a4d; --chip-line: rgba(40, 20, 60, .16);
-  --sel: rgba(47, 111, 235, .2); --sel-hover: rgba(47, 111, 235, .28);
+  --sel: rgba(106, 69, 230, .2); --sel-hover: rgba(106, 69, 230, .28);
 }
 body.wp .status { border-top-color: transparent; background: rgba(255, 255, 255, .45); }
 body.wp .search, body.wp .pin, body.wp .selbar, body.wp .menu, body.wp .toast, body.wp .card {
@@ -435,7 +435,7 @@ body.wp .search, body.wp .pin, body.wp .selbar, body.wp .menu, body.wp .toast, b
     --hover: rgba(255, 255, 255, .08); --current: rgba(255, 255, 255, .15);
     --sunken: rgba(8, 10, 26, .42); --raised: rgba(30, 32, 54, .8);
     --chip: rgba(255, 255, 255, .11); --chip-fg: #dcdde8; --chip-line: rgba(255, 255, 255, .2);
-    --sel: rgba(120, 166, 255, .25); --sel-hover: rgba(120, 166, 255, .33);
+    --sel: rgba(164, 140, 255, .25); --sel-hover: rgba(164, 140, 255, .33);
     --shadow: 0 12px 32px rgba(4, 5, 16, .55), 0 1px 3px rgba(4, 5, 16, .5);
   }
   body.wp .row, body.wp .status, body.wp .section { text-shadow: 0 1px 2px rgba(4, 5, 16, .5); }

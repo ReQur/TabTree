@@ -51,7 +51,7 @@ const refused = data => {
     readBackup(data);
     return false;
   } catch (e) {
-    return e.message === 'not a TabTree backup';
+    return e.message === 'not a Branchy backup';
   }
 };
 check("what isn't a backup is refused", [null, 'text', [], {}, { tabtree: 1 }, { tabtree: 2, tabs: [] }].every(refused));
@@ -112,5 +112,5 @@ check(`the switches join the ones here: ${JSON.stringify(o.local.settings)}`,
 check('the declined tickets and the wallpaper come along', o.local.declined['PROJ-9'] && o.local.wallpaper?.name === 'sea.jpg');
 check('the log has it', o.local.log.some(e => e.ev === 'imported' && e.matched === 4 && e.folders === 2));
 const bad = await o.ask({ type: 'importTree', backup: { hello: 'world' } });
-check(`a file that isn't a backup changes nothing: ${bad.error}`, bad.ok === false && bad.error === 'not a TabTree backup' && Object.keys(o.local.folders).sort().join() === 'rel,sub');
+check(`a file that isn't a backup changes nothing: ${bad.error}`, bad.ok === false && bad.error === 'not a Branchy backup' && Object.keys(o.local.folders).sort().join() === 'rel,sub');
 done();
